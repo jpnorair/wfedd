@@ -1,0 +1,17 @@
+
+# Build Directories
+/build
+/bin
+
+# Reference Information
+/_reference
+
+# XCode project folder
+/xcode-proj
+
+# library builds
+*.o
+*.a
+*.d
+*.gch
+*.h.gch
