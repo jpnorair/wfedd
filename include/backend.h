@@ -17,9 +17,8 @@
 #ifndef backend_h
 #define backend_h
 
-// Local Headers
-#include "formatters.h"
-
+// Libwebsockets
+#include <libwebsockets.h>
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -30,57 +29,45 @@
 #include <poll.h>
 
 
-
-
-// MPipe Data Type(s)
-typedef void* backend_handle_t;
-
-typedef enum {
-    DS_ASSISTNOW = 0,
-    DS_MAX = 1
-} backend_ds_t;
+/// one of these is created for each client connecting to us
+struct per_session_data__minimal {
+    struct per_session_data__minimal *pss_list;
+    struct lws *wsi;
+    int last;               // the last message number we sent 
+};
 
 
 
 
 
 
+int backend_callback(   struct lws *wsi, 
+                        enum lws_callback_reasons reason, 
+                        void *user, 
+                        void *in, 
+                        size_t len      );
 
-// These files are generally opened via fmemopen(), which yields no remnant
-// in the filesystem
-typedef struct {
-    pthread_mutex_t data_mutex;
-    
-    pthread_cond_t  croncond;
-    pthread_mutex_t cronmutex;
-    bool            croncond_pred;
-    
-    pthread_cond_t  readycond;
-    pthread_mutex_t readymutex;
-    int             readycond_cnt;
-    
-    double          client_lon;
-    double          client_lat;
-    
-    assistnow_t     assistnow;
-    
-    cron_expr       cronexp;
-    time_t          cronbasis;
-    
-} backend_ctx_t;
+
+void* backend_start(int logs_mask,
+                    bool do_hostcheck,
+                    bool do_fastmonitoring,
+                    const char* hostname,
+                    int port_number,
+                    const char* certpath,
+                    const char* keypath,
+                    const char* start_msg,
+                    struct lws_protocols* protocols,
+                    struct lws_http_mount* mount
+                    );
+
+int backend_wait(void* handle, int intsignal);
 
 
 
 
-int backend_init(backend_handle_t* handle, const char* cronstr);
-
-void backend_deinit(backend_handle_t handle);
 
 
 
-// Thread Functions
-///@todo move into mpipe_io section
-void* agnss_reader(void* args);
 
 
 
