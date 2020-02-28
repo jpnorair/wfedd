@@ -25,28 +25,9 @@
 // Local to this project
 #include "wfedd_cfg.h"
 #include "cliopt.h"
+#include "frontend.h"
 #include "backend.h"
 #include "debug.h"
-
-
-typedef struct {
-    int     l_type;
-    int     fdio;
-    int     fdhandle;
-    size_t  pagesize;
-    
-    char*   l_socket;
-    char*   websocket;
-} sockmap_t;
-
-typedef struct {
-    size_t size;
-    sockmap_t* map;
-} socklist_t;
-
-typedef struct {
-    socklist_t* socklist;
-} appdata_t;
 
 
 static cliopt_t cliopts;
@@ -56,15 +37,6 @@ static cliopt_t cliopts;
 /// main() just validates command line inputs and invokes wfedd()
 int wfedd(const char* rsrcpath, const char* urlpath, int port, bool use_tls, socklist_t* socklist);
 
-/// Threads: only one will be called in wfedd().
-/// * poll_unix(): local sockets are UNIX domain sockets 
-/// * poll_ubus(): local sockets are ubus (OpenWRT) sockets -- not implemented yet
-/// * poll_dbus(): local sockets are dbus sockets -- not implemented yet
-/// * poll_tcp(): local sockets are TCP sockets -- not implemented yet
-void* poll_unix(void* args);
-void* poll_ubus(void* args);
-void* poll_dbus(void* args);
-void* poll_tcp(void* args);
 
 
 
@@ -336,9 +308,8 @@ int wfedd(  const char* rsrcpath,
             socklist_t* socklist 
         ) {
         
-    pthread_t thr_backend;
-    appdata_t thr_data;
     void* backend_handle;
+    void* frontend_handle;
     
     char* startmsg;
     char* certpath;
@@ -393,8 +364,8 @@ int wfedd(  const char* rsrcpath,
     for (int i=0; i<socklist->size; i++) {
         int j = i+1;
         protocols[j].name                   = socklist->map[i].websocket;
-        protocols[j].callback               = backend_callback;
-        protocols[j].per_session_data_size  = sizeof(struct per_session_data__minimal);
+        protocols[j].callback               = frontend_callback;
+        protocols[j].per_session_data_size  = sizeof(struct per_session_data);
         protocols[j].rx_buffer_size         = 128;
         protocols[j].id                     = 0;
         protocols[j].user                   = NULL;
@@ -441,16 +412,15 @@ int wfedd(  const char* rsrcpath,
         printf(" * %s\n", keypath);
     }
     
-    ///3. Open all the sockets.  Throw error if no sockets could be opened.
+    ///3. start the backend.  This is the part that manages "local" sockets.
+    backend_handle = backend_start(socklist);
+    if (backend_handle == NULL) {
+        exitcode = 4;
+    }
 
-
-
+    ///4. start the frontend.  This is the part that manages the websockets.
     
-    
-    
-    
-    
-    /// Logs configuration (to stdout)
+    // Logs configuration (to stdout)
     logs_mask = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE
     /* for LLL_ verbosity above NOTICE to be built into lws,
      * lws must have been configured and built with
@@ -459,8 +429,8 @@ int wfedd(  const char* rsrcpath,
     /* | LLL_EXT */ /* | LLL_CLIENT */ /* | LLL_LATENCY */
     /* | LLL_DEBUG */;
     
-    /// Run the LWS backend.  This will block and exit on supplied signal.
-    backend_handle = backend_start(
+    // Run the LWS frontend.  This will block and exit on supplied signal.
+    frontend_handle = frontend_start(
                 logs_mask, 
                 false,  ///@todo -h argument from demo app (do_hostcheck)
                 false,  ///@todo -v argument from demo app (do_fastmonitoring)
@@ -472,28 +442,18 @@ int wfedd(  const char* rsrcpath,
                 protocols,
                 &mount
             );
-    
-    if (backend_handle == NULL) {
-        exitcode = 4;
+    if (frontend_handle == NULL) {
+        exitcode = 5;
         goto wfedd_FINISH;
     }
         
-    /// Run the local socket polling thread.  This is nonblocking.
-    /// @todo the thread that will be called should depend on a command line
-    /// argument, but right now it's just UNIX domain sockets.;
-    pthread_create(&thr_backend, NULL, &poll_unix, (void*)&thr_data);
-    
-    /// Run backend until control interrupt hits
-    backend_wait(backend_handle, SIGQUIT);
-                
-    /// Shut down the local socket polling thread
-    DEBUG_PRINTF("Cancelling Theads\n");
-    pthread_cancel(thr_backend);
-    
+    /// Run frontend until control interrupt hits
+    frontend_wait(frontend_handle, SIGQUIT);
     
     wfedd_FINISH:
     switch (exitcode) {
        default: 
+        case 5: backend_stop(backend_handle);
         case 4: free(str_mountorigin);
         case 3: free(keypath);
         case 2: free(certpath);
@@ -502,45 +462,6 @@ int wfedd(  const char* rsrcpath,
     }
     
     return 0;
-}
-
-
-
-
-int sub_pollfd_alloc(socklist_t* socklist, struct pollfd** pollitems, short pollevents) {
-    if ((pollitems == NULL) || (socklist == NULL)) {
-        return -1;
-    }
-    
-    *pollitems = calloc(socklist->size, sizeof(struct pollfd));
-    if (pollitems == NULL) {
-        return -2;
-    }
-    
-    for (int i=0; i<socklist->size; i++) {
-        (*pollitems)[i].fd     = socklist->map[i].fdio;
-        (*pollitems)[i].events = pollevents;
-    }
-    
-    return (int)(table->size);
-}
-
-
-void* poll_unix(void* args) {
-    appdata_t* app      = args;
-    struct pollfd* fds  = NULL;
-    
-    int num_fds;
-    int pollcode;
-    int polltimeout;
-    int ready_fds;
-    
-    num_fds = mpipe_pollfd_alloc(mph, &fds, (POLLIN | POLLNVAL | POLLHUP));
-    if (num_fds <= 0) {
-        ERR_PRINTF("MPipe polling could not be started (error %i): quitting\n", num_fds);
-        goto mpipe_reader_TERM;
-    }
-
 }
 
 

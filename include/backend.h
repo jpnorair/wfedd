@@ -17,9 +17,6 @@
 #ifndef backend_h
 #define backend_h
 
-// Libwebsockets
-#include <libwebsockets.h>
-
 // Standard C & POSIX Libraries
 #include <pthread.h>
 #include <stdbool.h>
@@ -29,44 +26,24 @@
 #include <poll.h>
 
 
-/// one of these is created for each client connecting to us
-struct per_session_data__minimal {
-    struct per_session_data__minimal *pss_list;
-    struct lws *wsi;
-    int last;               // the last message number we sent 
-};
+
+typedef struct {
+    int     l_type;
+    size_t  pagesize;
+    char*   l_socket;
+    char*   websocket;
+} sockmap_t;
+
+typedef struct {
+    size_t size;
+    sockmap_t* map;
+} socklist_t;
 
 
 
+void* backend_start(socklist_t* socklist);
 
-
-
-int backend_callback(   struct lws *wsi, 
-                        enum lws_callback_reasons reason, 
-                        void *user, 
-                        void *in, 
-                        size_t len      );
-
-
-void* backend_start(int logs_mask,
-                    bool do_hostcheck,
-                    bool do_fastmonitoring,
-                    const char* hostname,
-                    int port_number,
-                    const char* certpath,
-                    const char* keypath,
-                    const char* start_msg,
-                    struct lws_protocols* protocols,
-                    struct lws_http_mount* mount
-                    );
-
-int backend_wait(void* handle, int intsignal);
-
-
-
-
-
-
+void backend_stop(void* handle);
 
 
 

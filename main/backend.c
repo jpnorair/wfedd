@@ -1,350 +1,439 @@
-/*
- * ws protocol handler plugin for "lws-minimal"
- *
- * Written in 2010-2019 by Andy Green <andy@warmcat.com>
- *
- * This file is made available under the Creative Commons CC0 1.0
- * Universal Public Domain Dedication.
- *
- * This version holds a single message at a time, which may be lost if a new
- * message comes.  See the minimal-ws-server-ring sample for the same thing
- * but using an lws_ring ringbuffer to hold up to 8 messages at a time.
- */
+/* Copyright 2020, JP Norair
+*
+* Licensed under the OpenTag License, Version 1.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+* http://www.indigresso.com/wiki/doku.php?id=opentag:license_1_0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*
+*/
 
-///@note this .c file was used as an include, now is compiled
-#define LWS_PLUGIN_STATIC
 
+
+
+// Local to this project
+#include "wfedd_cfg.h"
+#include "cliopt.h"
 #include "backend.h"
+#include "debug.h"
 
-#include <libwebsockets.h>
+#include <errno.h>
+#include <limits.h>
+#include <poll.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <signal.h>
+#include <unistd.h>
+
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <sys/wait.h>
+
+#ifndef UNIX_PATH_MAX
+#   define UNIX_PATH_MAX    104
+#endif
 
 
-/// one of these created for each message 
+/// Threads: only one will be called in wfedd().
+/// * poll_unix(): local sockets are UNIX domain sockets 
+/// * poll_ubus(): local sockets are ubus (OpenWRT) sockets -- not implemented yet
+/// * poll_dbus(): local sockets are dbus sockets -- not implemented yet
+/// * poll_tcp(): local sockets are TCP sockets -- not implemented yet
+void* poll_unix(void* args);
+void* poll_ubus(void* args);
+void* poll_dbus(void* args);
+void* poll_tcp(void* args);
+
+
+/// This is a linked-list of connections between a websocket (frontend) and a
+/// and a backend socket.  Connections are N:1, such that multiple websockets
+/// identities, or vhosts, (i.e. the client side) can be connected to a single 
+/// backend daemon.
+typedef struct cs {
+    void*       ws_handle;
+    sockmap_t*  sock_handle;
+    
+    struct sockaddr_un addr;
+    int             fd_sock;
+    //int             id;
+    //unsigned int    flags;
+    
+    struct cs*  next;
+    struct cs*  prev;
+} conn_t;
+
 typedef struct {
-	void *payload; // is malloc'd 
-	size_t len;
-} msg_t;
-
-
-/// one of these is created for each vhost our protocol is used with
-struct per_vhost_data__minimal {
-	struct lws_context *context;
-	struct lws_vhost *vhost;
-	const struct lws_protocols *protocol;
-
-    // linked-list of live pss
-	struct per_session_data__minimal *pss_list;
-    // the one pending message...
-	msg_t amsg;
-    // the current message number we are caching
-	int current;
-};
-
-
-/// destroys the message when everyone has had a copy of it
-static void __minimal_destroy_message(void *_msg) {
-	msg_t *msg = _msg;
-
-	free(msg->payload);
-	msg->payload = NULL;
-	msg->len = 0;
-}
+    pthread_t       thread;
+    socklist_t*     socklist;
+    
+    pthread_mutex_t connlist_mutex;
+    conn_t*         connlist;
+    conn_t*         connlist_tail;
+    
+    int             pollirq_pipe[2];
+    bool            pollirq_inactive;
+    pthread_cond_t  pollirq_cond;
+    pthread_mutex_t pollirq_mutex;
+} backend_t;
 
 
 
-#if !defined (LWS_PLUGIN_STATIC)
-/// boilerplate needed if we are built as a dynamic plugin
-
-#   define LWS_PLUGIN_PROTOCOL_MINIMAL { \
-        "lws-minimal", \
-        callback_minimal, \
-        sizeof(struct per_session_data__minimal), \
-        128, \
-        0, NULL, 0 \
+/// Search through the socklist to find the socket corresponding to supplied
+/// websocket.  ws_name refers to the "protocol name", from libwebsockets.
+/// Each "protocol name" must be bridged 1:1 to a corresponding daemon.
+///
+/// Called only when opening a new websocket (i.e. client connection)
+///
+/// Currently, the search is a linear search, because wfedd is not expected to
+/// be used with very many daemons.  If that changes, we can change this easily
+/// to a binary search, because the websocket:daemon bridging never changes
+/// during runtime.
+sockmap_t* sub_socklist_search(socklist_t* socklist, const char* ws_name) {
+    int i;
+    
+    if ((socklist == NULL) || (ws_name == NULL)) {
+        return NULL;
+    }
+    
+    for (i=0; i<socklist->size; i++) {
+        if (strcmp(socklist->map[i].websocket, ws_name) == 0) {
+            return &socklist->map[i];
+        }
     }
 
-static const struct lws_protocols protocols[] = {
-    LWS_PLUGIN_PROTOCOL_MINIMAL
-};
+    return NULL;
+}
 
-int init_protocol_minimal(struct lws_context *context, struct lws_plugin_capability *c) {
-    if (c->api_magic != LWS_PLUGIN_API_MAGIC) {
-        lwsl_err("Plugin API %d, library API %d", LWS_PLUGIN_API_MAGIC, c->api_magic);
-        return 1;
+
+
+
+/// Send the IRQ and block until pollirq_cond is received.
+void sub_pollirq(backend_t* backend, const char* irq) {
+    int wait_test = 0;
+    
+    write(backend->pollirq_pipe[1], irq, 4);
+    
+    backend->pollirq_inactive = true;
+    while (backend->pollirq_inactive && (wait_test == 0)) {
+        wait_test = pthread_cond_wait(&backend->pollirq_cond, &backend->pollirq_mutex);
     }
-
-    c->protocols        = protocols;
-    c->count_protocols  = LWS_ARRAY_SIZE(protocols);
-    c->extensions       = NULL;
-    c->count_extensions = 0;
-    return 0;
 }
 
-int destroy_protocol_minimal(struct lws_context *context) {
-    return 0;
-}
-#endif
-
-#if defined(LWS_HAS_RETRYPOLICY)
-///@note this feature is somewhat rare among LWS library builds
-static const lws_retry_bo_t retry = {
-    .secs_since_valid_ping = 3,
-    .secs_since_valid_hangup = 10,
-};
-#endif
 
 
 
 
-/// This does most of the work in handling the websockets
-int backend_callback(   struct lws *wsi, 
-                        enum lws_callback_reasons reason, 
-                        void *user, 
-                        void *in, 
-                        size_t len      ) {
-            
-	struct per_session_data__minimal *pss;
-	struct per_vhost_data__minimal *vhd;
-	int m;
-    int rc = 0;   
 
-    ///@todo make sure this wasn't as "Static" from demo app
-    pss = (struct per_session_data__minimal *)user;
-    vhd = (struct per_vhost_data__minimal *)lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
-
-    ///@todo this operational switch needs to be mutexed
-
-	switch (reason) {
-	case LWS_CALLBACK_PROTOCOL_INIT:
-		vhd = lws_protocol_vh_priv_zalloc(lws_get_vhost(wsi), lws_get_protocol(wsi), sizeof(struct per_vhost_data__minimal));
-		vhd->context    = lws_get_context(wsi);
-		vhd->protocol   = lws_get_protocol(wsi);
-		vhd->vhost      = lws_get_vhost(wsi);
-		break;
-
-	case LWS_CALLBACK_ESTABLISHED:
-		/// add ourselves to the list of live pss held in the vhd 
-		lws_ll_fwd_insert(pss, pss_list, vhd->pss_list);
-		pss->wsi    = wsi;
-		pss->last   = vhd->current;
-		break;
-
-	case LWS_CALLBACK_CLOSED:
-		/// remove our closing pss from the list of live pss 
-		lws_ll_fwd_remove(struct per_session_data__minimal, pss_list, pss, vhd->pss_list);
-		break;
-
-	case LWS_CALLBACK_SERVER_WRITEABLE:
-    /// This is the routine that actually writes to the websocket(s)
-		if (!vhd->amsg.payload) {
-			break;
+void* poll_unix(void* args) {
+    backend_t* backend  = args;
+    struct pollfd* fds  = NULL;
+    int ready_fds;
+    
+    // Initial fd list is a single interruptor pipe
+    // "poll_groupfds" is the reallocation chunk size
+    // "poll_activefds" is the number of actually used fds
+    int poll_activefds  = 1;
+    int poll_groupfds   = 4;
+    int poll_allocfds   = 4;
+    
+    fds = calloc(poll_allocfds, sizeof(struct pollfd));
+    if (fds == NULL) {
+        ///@todo global error
+        goto poll_unix_TERM;
+    }
+    fds[0].fd       = backend->pollirq_pipe[0];
+    fds[0].events   = (POLLIN | POLLNVAL | POLLHUP);
+    
+    while (1) {
+        ready_fds = poll(fds, poll_activefds, -1);
+        if (ready_fds < 0) {
+            // poll() has been interrupted.  Most likely via pthreads_cancel().
+            goto poll_unix_TERM;
         }
-		if (pss->last == vhd->current) {
-			break;
+        if (ready_fds == 0) {
+            // This is a timeout with no fds reporting.  
+            // This should not occur in the current implementation.
+            // It is currently ignored.
+            continue;
         }
-
-		/// notice we allowed for LWS_PRE in the payload already 
-		m = lws_write(wsi, ((unsigned char *)vhd->amsg.payload) + LWS_PRE, vhd->amsg.len, LWS_WRITE_TEXT);
-		if (m < (int)vhd->amsg.len) {
-			lwsl_err("ERROR %d writing to ws\n", m);
-			rc = -1;
-		}
-        else {
-            pss->last = vhd->current;
-        }
-
-		break;
-
-    ///@todo this is where data from the websocket gets forwarded to socket
-    ///      The writeback part should be moved into the polling thread.
-	case LWS_CALLBACK_RECEIVE:
-        // amsg should be empty.  If it's not, we're looking at the last message
-		if (vhd->amsg.payload) {
-			__minimal_destroy_message(&vhd->amsg);
-        }
-		vhd->amsg.len = len;
         
-		/// notice we over-allocate by LWS_PRE 
-		vhd->amsg.payload = malloc(LWS_PRE + len);
-		if (!vhd->amsg.payload) {
-			lwsl_user("Out of Memory: dropping\n");
-			break;
-		}
-
-		memcpy((char *)vhd->amsg.payload + LWS_PRE, in, len);
-		vhd->current++;
-
-		/// let everybody know we want to write something on them
-        /// as soon as they are ready
-		lws_start_foreach_llp(struct per_session_data__minimal **, ppss, vhd->pss_list) {
-			lws_callback_on_writable((*ppss)->wsi);
-		} lws_end_foreach_llp(ppss, pss_list);
-		break;
-
-	default:
-		break;
-	}
-
-	return rc;
-}
-
-
-
-struct raw_vhd {
-//    lws_sock_file_fd_type u;
-    int filefd;
-};
-
-static char filepath[256];
-
-static int callback_raw_test(   struct lws *wsi, enum lws_callback_reasons reason,
-                                void *user, void *in, size_t len)
-{
-    struct raw_vhd *vhd = (struct raw_vhd *)lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
-    
-    lws_sock_file_fd_type u;
-    uint8_t buf[1024];
-    int n;
-
-    switch (reason) {
-    case LWS_CALLBACK_PROTOCOL_INIT:
-        vhd = lws_protocol_vh_priv_zalloc(lws_get_vhost(wsi), lws_get_protocol(wsi), sizeof(struct raw_vhd));
+        // Go through the fds[1:], back to front.
+        
+        for (int i = (poll_activefds-1); i>0; i--) {
+            ///@todo data forwarding
+        }
+        
+        // fds[0] is the irq pipe, which is a special case.
+        // It controls alterations to the fds array based on active connections
+        if (fds[0].revents != 0) {
+            uint8_t irqbuf[4];
+            int     delta;
+            ssize_t bytes_in = 0;
+            
+            // Anything other than POLLIN on the IRQ is a fatal error
+            if (fds[0].revents != POLLIN) {
+                ///@todo global error
+                goto poll_unix_TERM;
+            }
+            
+            // Read the IRQ command off the pipe.
+            while (bytes_in < 4) {
+                bytes_in += read(fds[0].fd, &irqbuf[bytes_in], 4-bytes_in);
+            }
+            
+            // There are two interrupts, ADD and DEL
+            // ADD may reallocate the fds array
+            // DEL will never change allocation
+            if (strncmp((const char*)irqbuf, "ADD", 4) == 0) {
+                if ((poll_activefds % poll_groupfds) == 0) {
+                    poll_allocfds = poll_activefds + poll_groupfds;
+                    
+                    free(fds);
+                    fds = calloc(poll_allocfds, sizeof(struct pollfd));
+                    if (fds == NULL) {
+                        ///@todo global error
+                        goto poll_unix_TERM;
+                    }
+                    fds[0].fd       = backend->pollirq_pipe[0];
+                    fds[0].events   = (POLLIN | POLLNVAL | POLLHUP);
+                }
+                delta           = 1;
+                poll_activefds += 1;
+            }
+            else if (strncmp((const char*)irqbuf, "DEL", 4) == 0) {
+                delta           = (poll_activefds < 1) ? -1 : 0;
+                poll_activefds += delta;
+            }
+            else {
+                delta = 0;
+            }
+            
+            // if ADD or DEL is found, reload latest connlist into fds array
+            if (delta != 0) {
+                conn_t* conn;
                 
-        vhd->filefd = lws_open(filepath, O_RDWR);
-        if (vhd->filefd == -1) {
-            lwsl_err("Unable to open %s\n", filepath);
-
-            return 1;
+                // Load the connlist.  Mutexed to prevent adds/dels from 
+                // happenning concurrently
+                pthread_mutex_lock(&backend->connlist_mutex);
+                conn = backend->connlist;
+                for (int i=1; i<poll_activefds; i++) {
+                    if (conn == NULL) {
+                        poll_activefds = i;
+                        break;
+                    }
+                    fds[i].fd       = conn->fd_sock;
+                    fds[i].events   = (POLLIN | POLLNVAL | POLLHUP);
+                    conn            = conn->next;
+                }
+                pthread_mutex_unlock(&backend->connlist_mutex);
+                
+                // Send the cond signal to unblock waiters
+                ///@note Libwebsockets is single-threaded, but we do this anyway
+                pthread_mutex_lock(&backend->pollirq_mutex);
+                backend->pollirq_inactive = false;
+                pthread_cond_broadcast(&backend->pollirq_cond);
+                pthread_mutex_unlock(&backend->pollirq_mutex);
+            }
         }
-        u.filefd = (lws_filefd_type)(long long)vhd->filefd;
-        if (!lws_adopt_descriptor_vhost(lws_get_vhost(wsi),
-                        LWS_ADOPT_RAW_FILE_DESC, u,
-                        "raw-test", NULL)) {
-            lwsl_err("Failed to adopt fifo descriptor\n");
-            close(vhd->filefd);
-            vhd->filefd = -1;
-
-            return 1;
-        }
-        break;
-
-    case LWS_CALLBACK_PROTOCOL_DESTROY:
-        if (vhd && vhd->filefd != -1)
-            close(vhd->filefd);
-        break;
-
-    /* callbacks related to raw file descriptor */
-
-    case LWS_CALLBACK_RAW_ADOPT_FILE:
-        lwsl_notice("LWS_CALLBACK_RAW_ADOPT_FILE\n");
-        break;
-
-    case LWS_CALLBACK_RAW_RX_FILE:
-        lwsl_notice("LWS_CALLBACK_RAW_RX_FILE\n");
-        n = read(vhd->filefd, buf, sizeof(buf));
-        if (n < 0) {
-            lwsl_err("Reading from %s failed\n", filepath);
-
-            return 1;
-        }
-        lwsl_hexdump_level(LLL_NOTICE, buf, n);
-        break;
-
-    case LWS_CALLBACK_RAW_CLOSE_FILE:
-        lwsl_notice("LWS_CALLBACK_RAW_CLOSE_FILE\n");
-        break;
-
-    case LWS_CALLBACK_RAW_WRITEABLE_FILE:
-        lwsl_notice("LWS_CALLBACK_RAW_WRITEABLE_FILE\n");
-        /*
-         * you can call lws_callback_on_writable() on a raw file wsi as
-         * usual, and then write directly into the raw filefd here.
-         */
-        break;
-
-    default:
-        break;
     }
 
-    return 0;
+    poll_unix_TERM:
+    return NULL;
 }
 
 
 
 
-void* backend_start(int logs_mask,
-                    bool do_hostcheck,
-                    bool do_fastmonitoring,
-                    const char* hostname,
-                    int port_number,
-                    const char* certpath,
-                    const char* keypath,
-                    const char* start_msg,
-                    struct lws_protocols* protocols,
-                    struct lws_http_mount* mount
-                ) {
 
-    struct lws_context_creation_info info;
-    struct lws_context *context;
+
+
+
+void* backend_start(socklist_t* socklist) {
+    backend_t* handle;
     
-    lws_set_log_level(logs_mask, NULL);
-    lwsl_user(start_msg);
-
-    /// These info parameters [mostly] come from command line arguments
-    memset(&info, 0, sizeof info);
-    info.port       = port_number;
-    info.mounts     = mount;
-    info.protocols  = protocols;
-    info.vhost_name = hostname;
-    info.options    = LWS_SERVER_OPTION_HTTP_HEADERS_SECURITY_BEST_PRACTICES_ENFORCE;
-    info.ws_ping_pong_interval = 10;
-    if ((certpath != NULL) && (keypath != NULL)) {
-        info.options                   |= LWS_SERVER_OPTION_DO_SSL_GLOBAL_INIT;
-        info.ssl_cert_filepath          = certpath;
-        info.ssl_private_key_filepath   = keypath;
+    // create backend handle
+    handle = malloc(sizeof(backend_t));
+    if (handle == NULL) {
+        goto backend_start_EXIT;
     }
-    if (do_hostcheck) {
-        info.options |= LWS_SERVER_OPTION_VHOST_UPG_STRICT_HOST_CHECK;
-    }
-#   if defined(LWS_HAS_RETRYPOLICY)
-    ///@note this feature is not in all builds of libwebsockets
-    if (do_fastmonitoring) {
-        info.retry_and_idle_policy = &retry;
-    }
-#   endif
-
-    /// Initialization.
-    context = lws_create_context(&info);
-    if (context == NULL) {
-        lwsl_err("lws init failed\n");
+    handle->socklist        = socklist;
+    handle->pollirq_pipe[0] = -1;
+    handle->pollirq_pipe[1] = -1;
+    
+    // initialize connlist
+    handle->connlist        = NULL;
+    handle->connlist_tail   = NULL;
+    if (pthread_mutex_init(&handle->connlist_mutex, NULL) != 0) {
+        goto backend_start_TERM1;
     }
     
-    return context;
+    // Initialize the IRQ cond
+    if (pthread_mutex_init(&handle->pollirq_mutex, NULL) != 0) {
+        goto backend_start_TERM2;
+    }
+    if (pthread_cond_init(&handle->pollirq_cond, NULL) != 0) {
+        goto backend_start_TERM3;
+    }
+    
+    // initialize the IRQ Pipe
+    if (pipe(handle->pollirq_pipe) != 0) {
+        goto backend_start_TERM4;
+    }
+    
+    // create the thread
+    if (pthread_create(&handle->thread, NULL, &poll_unix, (void*)handle) != 0) {
+        goto backend_start_TERM5;
+    }
+    
+    backend_start_EXIT:
+    return handle;
+    
+    backend_start_TERM5:
+    close(handle->pollirq_pipe[0]);
+    close(handle->pollirq_pipe[1]);
+    backend_start_TERM4:
+    pthread_cond_destroy(&handle->pollirq_cond);
+    backend_start_TERM3:
+    pthread_mutex_destroy(&handle->pollirq_mutex);
+    backend_start_TERM2:
+    pthread_mutex_destroy(&handle->connlist_mutex);
+    backend_start_TERM1:
+    free(handle);
+    return NULL;
+}
+
+
+void backend_stop(void* handle) {
+    backend_t* backend = handle;
+
+    if (backend == NULL) {
+        return;
+    }
+    
+    // Kill the thread, interrupting poll() as needed
+    
+    // Clear the connection list
+    
+    // Clear all other local resources (if any)
+    
+    if (backend->pollirq_pipe[0] >= 0) {
+        close(backend->pollirq_pipe[0]);
+    }
+    if (backend->pollirq_pipe[1] >= 0) {
+        close(backend->pollirq_pipe[1]);
+    }
+
+//    if (backend != NULL) {
+//        pthread_cancel(backend->thread);
+//    
+//    }
 }
 
 
 
-
-volatile int interrupted;
-void backend_inthandler(int sig) {
-    interrupted = 1;
-}
-
-int backend_wait(void* handle, int intsignal) {
-    struct lws_context *context = handle;
-    int n = 0;
+/// Used by frontend when a websocket is opened
+void* backend_conn_open(void* backend_handle, void* ws_handle, const char* ws_name) {
+    backend_t*  backend = backend_handle;
+    conn_t*     conn    = NULL;
+    sockmap_t*  lsock;
+    struct stat statdata;
     
-    signal(intsignal, backend_inthandler);
-    
-    /// Runtime Loop: waits for interrupt signal
-    while (n >= 0 && !interrupted) {
-        n = lws_service(context, 0);
+    if ((backend_handle == NULL) || (ws_handle == NULL) || (ws_name == NULL)) {
+        return NULL;
     }
     
-    /// Deinitialize
-    lws_context_destroy(context);
+    // make sure the socket is in the list
+    lsock = sub_socklist_search(backend->socklist, ws_name);
+    if (lsock == NULL) {
+        goto backend_conn_open_EXIT;
+    }
     
-    return 0;
+    // Create the connection object
+    conn = malloc(sizeof(conn_t));
+    if (conn == NULL) {
+        ///@todo some sort of error handling
+        goto backend_conn_open_EXIT;
+    }
+    conn->sock_handle   = lsock;
+    conn->ws_handle     = ws_handle;
+    
+    // Test if the socket_path argument is indeed a path to a socket
+    if (stat(lsock->l_socket, &statdata) != 0) {
+        goto backend_conn_open_TERM1;
+    }
+    if (S_ISSOCK(statdata.st_mode) == 0) {
+        goto backend_conn_open_TERM1;
+    }
+        
+    // Create a client socket
+    conn->fd_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (conn->fd_sock < 0) {
+        goto backend_conn_open_TERM1;
+    }
+    conn->addr.sun_family = AF_UNIX;
+    snprintf(conn->addr.sun_path, UNIX_PATH_MAX, "%s", lsock->l_socket);
+        
+    // Open a connection to the client socket
+    if (connect(conn->fd_sock, (struct sockaddr *)&conn->addr, sizeof(struct sockaddr_un)) < 0) {
+        goto backend_conn_open_TERM2;
+    }
+    
+    // link this connection into the list
+    pthread_mutex_lock(&backend->connlist_mutex);
+    conn->next              = NULL;
+    conn->prev              = backend->connlist_tail;
+    backend->connlist_tail  = conn;
+    
+    // writing to pollirq_pipe[1] will interrupt the poll() call in the daemon 
+    // socket polling thread.  We need to do this in order to have the polling
+    // thread uptake the changes in the connlist
+    /// 3. the polling thread will rebuild the fds list
+    write(backend->pollirq_pipe[1], "ADD", 4);
+    pthread_mutex_unlock(&backend->connlist_mutex);
+    
+    backend_conn_open_EXIT:
+    return conn;
+    
+    backend_conn_open_TERM2:
+    close(conn->fd_sock);
+    backend_conn_open_TERM1:
+    free(conn);
+    return NULL;
+    
 }
+
+
+/// Used by frontend when a websocket is closed
+void backend_conn_close(void* backend_handle, void* conn_handle) {
+    backend_t*  backend = backend_handle;
+    conn_t*     conn    = conn_handle;
+
+    if ((backend_handle == NULL) || (conn_handle == NULL)) {
+        return;
+    }
+    
+    // Unlink this connection
+    pthread_mutex_lock(&backend->connlist_mutex);
+    conn->next->prev = conn->prev;
+    if (conn->prev != NULL) {
+        conn->prev->next = conn->next;
+    }
+    pthread_mutex_unlock(&backend->connlist_mutex);
+    
+    // sub_pollirq() will send the IRQ and block until poll thread services it.
+    sub_pollirq(backend, "DEL");
+    
+    // close the connection to the socket & release the connection memory
+    close(conn->fd_sock);
+    free(conn);
+}
+
+
