@@ -48,7 +48,7 @@ static const lws_retry_bo_t retry = {
 
 
 /// destroys the message when everyone has had a copy of it
-static void __minimal_destroy_message(void *_msg) {
+static void sub_destroy_message(void *_msg) {
 	msg_t *msg = _msg;
 
 	free(msg->payload);
@@ -129,7 +129,7 @@ int frontend_callback(   struct lws *wsi,
 	case LWS_CALLBACK_RECEIVE:
         // amsg should be empty.  If it's not, we're looking at the last message
 		if (vhd->amsg.payload) {
-			__minimal_destroy_message(&vhd->amsg);
+			sub_destroy_message(&vhd->amsg);
         }
 		vhd->amsg.len = len;
         
@@ -155,6 +155,35 @@ int frontend_callback(   struct lws *wsi,
 	}
 
 	return rc;
+}
+
+
+
+int frontend_queuemsg(void* ws_handle, void* in, size_t len) {
+    struct lws* wsi = ws_handle;
+    struct per_vhost_data* vhd;
+
+    vhd = (struct per_vhost_data *)lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
+    
+    /// amsg should be empty.  If it's not, we're looking at the previous message
+    if (vhd->amsg.payload) {
+        sub_destroy_message(&vhd->amsg);
+    }
+    vhd->amsg.len = len;
+    
+    /// notice we over-allocate by LWS_PRE 
+    vhd->amsg.payload = malloc(LWS_PRE + len);
+    if (!vhd->amsg.payload) {
+        lwsl_user("Out of Memory: dropping\n");
+        len = 0;
+    }
+    else {
+        memcpy((char *)vhd->amsg.payload + LWS_PRE, in, len);
+        vhd->current++;
+        lws_callback_on_writable(wsi);
+    }
+
+    return (int)len;
 }
 
 
@@ -236,91 +265,6 @@ int frontend_wait(void* handle, int intsignal) {
 
 
 
-
-
-
-
-/// ---- Below here subject to delete -----
-
-
-struct raw_vhd {
-//    lws_sock_file_fd_type u;
-    int     filefd;
-};
-
-static char filepath[256];
-
-static int callback_raw_test(   struct lws *wsi, enum lws_callback_reasons reason,
-                                void *user, void *in, size_t len)
-{
-    struct raw_vhd *vhd = (struct raw_vhd *)lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
-    
-    lws_sock_file_fd_type u;
-    uint8_t buf[1024];
-    int n;
-
-    switch (reason) {
-    case LWS_CALLBACK_PROTOCOL_INIT:
-        vhd = lws_protocol_vh_priv_zalloc(lws_get_vhost(wsi), lws_get_protocol(wsi), sizeof(struct raw_vhd));
-                
-        vhd->filefd = lws_open(filepath, O_RDWR);
-        if (vhd->filefd == -1) {
-            lwsl_err("Unable to open %s\n", filepath);
-
-            return 1;
-        }
-        u.filefd = (lws_filefd_type)(long long)vhd->filefd;
-        if (!lws_adopt_descriptor_vhost(lws_get_vhost(wsi),
-                        LWS_ADOPT_RAW_FILE_DESC, u,
-                        "raw-test", NULL)) {
-            lwsl_err("Failed to adopt fifo descriptor\n");
-            close(vhd->filefd);
-            vhd->filefd = -1;
-
-            return 1;
-        }
-        break;
-
-    case LWS_CALLBACK_PROTOCOL_DESTROY:
-        if (vhd && vhd->filefd != -1)
-            close(vhd->filefd);
-        break;
-
-    /* callbacks related to raw file descriptor */
-
-    case LWS_CALLBACK_RAW_ADOPT_FILE:
-        lwsl_notice("LWS_CALLBACK_RAW_ADOPT_FILE\n");
-        break;
-
-    case LWS_CALLBACK_RAW_RX_FILE:
-        lwsl_notice("LWS_CALLBACK_RAW_RX_FILE\n");
-        n = read(vhd->filefd, buf, sizeof(buf));
-        if (n < 0) {
-            lwsl_err("Reading from %s failed\n", filepath);
-
-            return 1;
-        }
-        lwsl_hexdump_level(LLL_NOTICE, buf, n);
-        break;
-
-    case LWS_CALLBACK_RAW_CLOSE_FILE:
-        lwsl_notice("LWS_CALLBACK_RAW_CLOSE_FILE\n");
-        break;
-
-    case LWS_CALLBACK_RAW_WRITEABLE_FILE:
-        lwsl_notice("LWS_CALLBACK_RAW_WRITEABLE_FILE\n");
-        /*
-         * you can call lws_callback_on_writable() on a raw file wsi as
-         * usual, and then write directly into the raw filefd here.
-         */
-        break;
-
-    default:
-        break;
-    }
-
-    return 0;
-}
 
 
 

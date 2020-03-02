@@ -68,6 +68,9 @@ int frontend_callback(   struct lws *wsi,
                         size_t len      );
 
 
+int frontend_queuemsg(void* ws_handle, void* in, size_t len);
+
+
 void* frontend_start(int logs_mask,
                     bool do_hostcheck,
                     bool do_fastmonitoring,
