@@ -88,30 +88,36 @@ int frontend_callback(   struct lws *wsi,
 
 	case LWS_CALLBACK_ESTABLISHED:
 		/// add ourselves to the list of live pss held in the vhd 
-        ///@todo open connection to local socket attached to this websocket
 		lws_ll_fwd_insert(pss, pss_list, vhd->pss_list);
-		pss->wsi    = wsi;
-		pss->last   = vhd->current;
+		pss->wsi            = wsi;
+		pss->last           = vhd->current;
+        
+        // Open a corresponding daemon client socket
+        pss->conn_handle    = backend_conn_open(lws_context_user(vhd->context), wsi, vhd->protocol->name);
+        
+        ///@todo some form of error handling if conn_handle returns as NULL
+        //if (pss->conn_handle == NULL) {
+        //}
 		break;
 
 	case LWS_CALLBACK_CLOSED:
 		/// remove our closing pss from the list of live pss 
-        ///@todo close connection to local socket attached to this websocket
+        // Kill the corresponding daemon client socket
+        backend_conn_close(lws_context_user(vhd->context), pss->conn_handle);
+        // Kill the websocket
 		lws_ll_fwd_remove(struct per_session_data, pss_list, pss, vhd->pss_list);
 		break;
 
 	case LWS_CALLBACK_SERVER_WRITEABLE:
     /// This is the routine that actually writes to the websocket
+    ///@todo might toss-in a ring buffer here, check the lws ring buffer example.
 		if (!vhd->amsg.payload) {
 			break;
         }
 		if (pss->last == vhd->current) {
 			break;
         }
-
-        ///@todo change this as needed to write from a cache (perhaps ring buffer 
-        /// or a packetlist associated with this websocket)
-
+        
 		/// notice we allowed for LWS_PRE in the payload already 
 		m = lws_write(wsi, ((unsigned char *)vhd->amsg.payload) + LWS_PRE, vhd->amsg.len, LWS_WRITE_TEXT);
 		if (m < (int)vhd->amsg.len) {
@@ -121,33 +127,12 @@ int frontend_callback(   struct lws *wsi,
         else {
             pss->last = vhd->current;
         }
-
 		break;
 
     ///@todo this is where data from the websocket gets forwarded to socket
     ///      The writeback part should be moved into the polling thread.
 	case LWS_CALLBACK_RECEIVE:
-        // amsg should be empty.  If it's not, we're looking at the last message
-		if (vhd->amsg.payload) {
-			sub_destroy_message(&vhd->amsg);
-        }
-		vhd->amsg.len = len;
-        
-		/// notice we over-allocate by LWS_PRE 
-		vhd->amsg.payload = malloc(LWS_PRE + len);
-		if (!vhd->amsg.payload) {
-			lwsl_user("Out of Memory: dropping\n");
-			break;
-		}
-
-		memcpy((char *)vhd->amsg.payload + LWS_PRE, in, len);
-		vhd->current++;
-
-		/// let everybody know we want to write something on them
-        /// as soon as they are ready
-		lws_start_foreach_llp(struct per_session_data **, ppss, vhd->pss_list) {
-			lws_callback_on_writable((*ppss)->wsi);
-		} lws_end_foreach_llp(ppss, pss_list);
+        backend_queuemsg(lws_context_user(vhd->context), pss->conn_handle, in, len);
 		break;
 
 	default:
@@ -188,14 +173,14 @@ int frontend_queuemsg(void* ws_handle, void* in, size_t len) {
 
 
 
-void* frontend_start(int logs_mask,
+void* frontend_start(void* backend_handle,
+                    int logs_mask,
                     bool do_hostcheck,
                     bool do_fastmonitoring,
                     const char* hostname,
                     int port_number,
                     const char* certpath,
                     const char* keypath,
-                    const char* start_msg,
                     struct lws_protocols* protocols,
                     struct lws_http_mount* mount
                 ) {
@@ -204,10 +189,11 @@ void* frontend_start(int logs_mask,
     struct lws_context *context;
     
     lws_set_log_level(logs_mask, NULL);
-    lwsl_user(start_msg);
+    //lwsl_user("LWS start msg");
 
     /// These info parameters [mostly] come from command line arguments
     memset(&info, 0, sizeof info);
+    info.user       = backend_handle;
     info.port       = port_number;
     info.mounts     = mount;
     info.protocols  = protocols;

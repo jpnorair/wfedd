@@ -39,7 +39,9 @@ struct per_session_data {
     struct per_session_data *pss_list;
     struct lws *wsi;
     int last;               // the last message number we sent 
+    void* conn_handle;
 };
+
 
 
 /// one of these is created for each vhost our protocol is used with
@@ -71,14 +73,14 @@ int frontend_callback(   struct lws *wsi,
 int frontend_queuemsg(void* ws_handle, void* in, size_t len);
 
 
-void* frontend_start(int logs_mask,
+void* frontend_start(void* backend_handle,
+                    int logs_mask,
                     bool do_hostcheck,
                     bool do_fastmonitoring,
                     const char* hostname,
                     int port_number,
                     const char* certpath,
                     const char* keypath,
-                    const char* start_msg,
                     struct lws_protocols* protocols,
                     struct lws_http_mount* mount
                     );

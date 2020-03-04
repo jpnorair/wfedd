@@ -4,70 +4,152 @@ LD := ld
 THISMACHINE ?= $(shell uname -srm | sed -e 's/ /-/g')
 THISSYSTEM	?= $(shell uname -s)
 
-VERSION     ?= 0.1.0
+APP         ?= wfedd
+PKGDIR      := ../_hbpkg/$(THISMACHINE)
+SYSDIR      := ../_hbsys/$(THISMACHINE)
+EXT_DEF     ?= 
+EXT_INC     ?= 
+EXT_LIBFLAGS ?= 
+EXT_LIBS    ?= 
+VERSION     ?= 0.1.a
 
-APP         := ws-server
-SRCDIR      := .
-INCDIR      := .
-BUILDDIR    := build/$(THISMACHINE)
-TARGETDIR   := bin/$(THISMACHINE)
-RESDIR      := 
+# Try to get git HEAD commit value
+ifneq ($(INSTALLER_HEAD),)
+    GITHEAD := $(INSTALLER_HEAD)
+else
+    GITHEAD := $(shell git rev-parse --short HEAD)
+endif
+
+# Check for debugging build, and set necessary variables
+ifeq ($(MAKECMDGOALS),debug)
+	APPDIR      := bin/$(THISMACHINE)
+	BUILDDIR    := build/$(THISMACHINE)_debug
+	DEBUG_MODE  := 1
+else
+	APPDIR      := bin/$(THISMACHINE)
+	BUILDDIR    := build/$(THISMACHINE)
+	DEBUG_MODE  := 0
+endif
+
+# Make sure the LD_LIBRARY_PATH includes the _hbsys directory
+ifneq ($(findstring $(SYSDIR)/lib,$(LD_LIBRARY_PATH)),)
+	error "$(SYSDIR)/lib not in LD_LIBRARY_PATH.  Please update your settings to include this."
+endif
+
+# Make sure the LD_LIBRARY_PATH includes the _hbsys directory
+ifneq ($(findstring $(SYSDIR)/lib,$(LD_LIBRARY_PATH)),)
+	error "$(SYSDIR)/lib not in LD_LIBRARY_PATH.  Please update your settings to include this."
+endif
+
+# Conditional flags per OS
+ifeq ($(THISSYSTEM),Darwin)
+	OSCFLAGS := -Wno-nullability-completeness -Wno-expansion-to-defined
+	OSLIBINC := -L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib
+	OSINC := -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include
+	LIBBSD :=
+else ifeq ($(THISSYSTEM),Linux)
+	OSCFLAGS := 
+	OSLIBINC := 
+	OSINC := 
+	LIBBSD :=
+else
+	error "Only Darwin and Linux supported at this point"
+endif
+
+# Conditional build operations depending on how libwebsockets is built.
+# This sections needs some additional work
+ABSPATH     := $(shell pwd)
+PATH_LIBLWS  := 
+#PATH_LIBLWS := -L$(ABSPATH)/lws/lib
+PATH_INCLWS	:= 
+#PATH_LIBLWS := -I$(ABSPATH)/lws/include
+#LIBEVUV    := 
+LIBEVUV		:= -lev -luv
+LIBSSL		:= -lssl -lcrypto
+PATH_LIBSSL := -L/usr/local/opt/openssl@1.1/lib
+PATH_INCSSL := -I/usr/local/opt/openssl@1.1/include
+
+# These variables don't need to change unless the build changes
+DEFAULT_DEF := -DWFEDD_PARAM_GITHEAD=\"$(GITHEAD)\"
+LIBMODULES  := argtable $(EXT_LIBS)
+SUBMODULES  := main
 SRCEXT      := c
 DEPEXT      := d
 OBJEXT      := o
 
-ABSPATH     := $(shell pwd)
-CFLAGS      ?= -std=gnu99 -O3 -fPIC
-LIBINC      := -L/usr/local/opt/openssl@1.1/lib 
+# Build flags, derived from above variables
+CFLAGS_DEBUG?= -std=gnu99 -Og -g -Wall $(OSCFLAGS) -pthread
+CFLAGS      ?= -std=gnu99 -O3 $(OSCFLAGS) -pthread
+INC         := $(EXT_INC) $(PATH_INCLWS) $(PATH_INCSSL) -I. -I./include -I./$(SYSDIR)/include -I./usr/local/include $(OSINC)
+INCDEP      := -I.
+LIBINC      := $(EXT_LIB) $(PATH_LIBLWS) $(PATH_LIBSSL) -L./$(SYSDIR)/lib -L./usr/local/lib $(OSLIBINC)
+LIB         := $(LIBSSL) $(LIBEVUV) -lglib-2.0 -lz -lc -lwebsockets
 
-LIB         := -lssl -lcrypto -lev -luv -lglib-2.0 -lz -lc $(EXT_LIB) -L$(ABSPATH)/lws/lib -lwebsockets
-INC         := -I/usr/local/opt/openssl@1.1/include -I$(ABSPATH)/lws/include $(EXT_INC) 
-INCDEP      := -I/usr/local/opt/openssl@1.1/include -I$(ABSPATH)/lws/include -I$(INCDIR) $(EXT_INC) 
-#LIB         := -lssl -lcrypto -lev -luv -lglib-2.0 -lz -lc -lwebsockets
-#INC         := -I/usr/local/opt/openssl@1.1/include -I/usr/local/include $(EXT_INC) 
-#INCDEP      := -I/usr/local/opt/openssl@1.1/include -I/usr/local/include -I$(INCDIR) $(EXT_INC) 
+# Export to local and subordinate makefiles
+WFEDD_OSCFLAGS:= $(OSCFLAGS)
+WFEDD_PKG   := $(PKGDIR)
+WFEDD_DEF   := $(DEFAULT_DEF) $(EXT_DEF)
+WFEDD_INC   := $(INC) $(EXT_INC)
+WFEDD_LIBINC:= $(LIBINC)
+WFEDD_LIB   := $(EXT_LIBFLAGS) $(LIB)
+WFEDD_BLD   := $(BUILDDIR)
+WFEDD_APP   := $(APPDIR)
+export WFEDD_OSCFLAGS
+export WFEDD_PKG
+export WFEDD_DEF
+export WFEDD_LIBINC
+export WFEDD_INC
+export WFEDD_LIB
+export WFEDD_BLD
+export WFEDD_APP
 
-#SOURCES     := $(shell find $(SRCDIR) -type f -name "*.$(SRCEXT)")
-SOURCES     := $(shell ls $(SRCDIR)/*.$(SRCEXT))
-OBJECTS     := $(patsubst $(SRCDIR)/%,$(BUILDDIR)/%,$(SOURCES:.$(SRCEXT)=.$(OBJEXT)))
-
-
-
-all: resources $(APP)
+deps: $(LIBMODULES)
+all: release
+release: directories $(APP)
+debug: directories $(APP).debug
+obj: $(SUBMODULES)
+pkg: deps all install
 remake: cleaner all
 
+install: 
+	@rm -rf $(PKGDIR)/$(APP).$(VERSION)
+	@mkdir -p $(PKGDIR)/$(APP).$(VERSION)
+	@cp $(APPDIR)/$(APP) $(PKGDIR)/$(APP).$(VERSION)/
+	@rm -f $(PKGDIR)/$(APP)
+	@ln -s $(APP).$(VERSION) ./$(PKGDIR)/$(APP)
+	cd ../_hbsys && $(MAKE) sys_install INS_MACHINE=$(THISMACHINE) INS_PKGNAME=$(APP)
 
-#Make the Directories
-resources:
-	@mkdir -p $(TARGETDIR)
+directories:
+	@mkdir -p $(APPDIR)
 	@mkdir -p $(BUILDDIR)
 
-#Clean only Objects
+# Clean only this machine
 clean:
 	@$(RM) -rf $(BUILDDIR)
+	@$(RM) -rf $(APPDIR)
 
-#Full Clean, Objects and Binaries
-cleaner: clean
-	@$(RM) -rf $(TARGETDIR)
+# Clean all builds
+cleaner: 
+	@$(RM) -rf ./build
+	@$(RM) -rf ./bin
 
-#Pull in dependency info for *existing* .o files
--include $(OBJECTS:.$(OBJEXT)=.$(DEPEXT))
-	
-$(APP): $(OBJECTS)
+#Linker
+$(APP): $(SUBMODULES) 
 	$(eval OBJECTS := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
-	$(CC) $(CFLAGS) $(INC) $(LIBINC) -o $(TARGETDIR)/$(APP) $(OBJECTS) $(LIB)
+	$(CC) $(CFLAGS) $(WFEDD_DEF) $(WFEDD_INC) $(WFEDD_LIBINC) -o $(APPDIR)/$(APP) $(OBJECTS) $(WFEDD_LIB)
 
-#Compile
-$(BUILDDIR)/%.$(OBJEXT): $(SRCDIR)/%.$(SRCEXT)
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(INC) -c -o $@ $<
-	@$(CC) $(CFLAGS) $(INCDEP) -MM $(SRCDIR)/$*.$(SRCEXT) > $(BUILDDIR)/$*.$(DEPEXT)
-	@cp -f $(BUILDDIR)/$*.$(DEPEXT) $(BUILDDIR)/$*.$(DEPEXT).tmp
-	@sed -e 's|.*:|$(BUILDDIR)/$*.$(OBJEXT):|' < $(BUILDDIR)/$*.$(DEPEXT).tmp > $(BUILDDIR)/$*.$(DEPEXT)
-	@sed -e 's/.*://' -e 's/\\$$//' < $(BUILDDIR)/$*.$(DEPEXT).tmp | fmt -1 | sed -e 's/^ *//' -e 's/$$/:/' >> $(BUILDDIR)/$*.$(DEPEXT)
-	@rm -f $(BUILDDIR)/$*.$(DEPEXT).tmp
+$(APP).debug: $(SUBMODULES)
+	$(eval OBJECTS_D := $(shell find $(BUILDDIR) -type f -name "*.$(OBJEXT)"))
+	$(CC) $(CFLAGS_DEBUG) $(WFEDD_DEF) -D__DEBUG__ $(WFEDD_INC) $(WFEDD_LIBINC) -o $(APPDIR)/$(APP).debug $(OBJECTS_D) $(WFEDD_LIB)
+
+#Library dependencies (not in wfedd sources)
+$(LIBMODULES): %: 
+	cd ./../$@ && $(MAKE) pkg
+
+
+#wfedd submodules
+$(SUBMODULES): %: directories
+	cd ./$@ && $(MAKE) -f $@.mk obj EXT_DEBUG=$(DEBUG_MODE)
 
 #Non-File Targets
-.PHONY: all app remake clean cleaner resources
-
-
+.PHONY: deps all release debug obj pkg remake install directories clean cleaner

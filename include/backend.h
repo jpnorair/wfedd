@@ -46,7 +46,11 @@ void* backend_start(socklist_t* socklist);
 void backend_stop(void* handle);
 
 
+int backend_queuemsg(void* backend_handle, void* conn_handle, void* data, size_t len);
 
+void* backend_conn_open(void* backend_handle, void* ws_handle, const char* ws_name);
+
+void backend_conn_close(void* backend_handle, void* conn_handle);
 
 
 

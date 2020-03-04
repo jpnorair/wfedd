@@ -311,7 +311,6 @@ int wfedd(  const char* rsrcpath,
     void* backend_handle;
     void* frontend_handle;
     
-    char* startmsg;
     char* certpath;
     char* keypath;
     int cursor;
@@ -322,7 +321,6 @@ int wfedd(  const char* rsrcpath,
     char* str_mountorigin;
     const char* protocol_http = "http";
     const char* hostname = "localhost";
-    const char* startmsg_default = "";
     
     struct lws_http_mount mount = {
         .mount_next         = NULL,                /* linked-list "next" */
@@ -431,6 +429,7 @@ int wfedd(  const char* rsrcpath,
     
     // Run the LWS frontend.  This will block and exit on supplied signal.
     frontend_handle = frontend_start(
+                backend_handle,
                 logs_mask, 
                 false,  ///@todo -h argument from demo app (do_hostcheck)
                 false,  ///@todo -v argument from demo app (do_fastmonitoring)
@@ -438,7 +437,6 @@ int wfedd(  const char* rsrcpath,
                 port, 
                 use_tls ? certpath : NULL,
                 use_tls ? keypath : NULL,
-                startmsg_default,
                 protocols,
                 &mount
             );

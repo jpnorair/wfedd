@@ -45,6 +45,31 @@
 #endif
 
 
+/// Mutex implementations
+/// LWS is sort of vague about how it should work with multithreads (the terse
+/// documentation just says "don't do it"), but as always, there is a way to do
+/// it right.  We are trying different mutex arrangements to allow it to work
+/// correctly.
+
+//#define GLOBAL_MUTEX
+#define CONNDICT_MUTEX
+
+#ifdef CONNDICT_MUTEX
+#   define CONNDICT_LOCK(MUTEX)     pthread_mutex_lock(MUTEX)
+#   define CONNDICT_UNLOCK(MUTEX)   pthread_mutex_unlock(MUTEX)
+#else
+#   define CONNDICT_LOCK(MUTEX);
+#   define CONNDICT_UNLOCK(MUTEX);
+#endif
+#ifdef GLOBAL_MUTEX
+#   define GLOBAL_LOCK(MUTEX)     pthread_mutex_lock(MUTEX)
+#   define GLOBAL_UNLOCK(MUTEX)   pthread_mutex_unlock(MUTEX)
+#else
+#   define GLOBAL_LOCK(MUTEX);
+#   define GLOBAL_UNLOCK(MUTEX);
+#endif
+
+
 /// Threads: only one will be called in wfedd().
 /// * poll_unix(): local sockets are UNIX domain sockets 
 /// * poll_ubus(): local sockets are ubus (OpenWRT) sockets -- not implemented yet
@@ -78,8 +103,14 @@ typedef struct {
     pthread_t       thread;
     socklist_t*     socklist;
     
-    pthread_mutex_t conndict_mutex;
+#   ifdef GLOBAL_MUTEX
+    pthread_mutex_t global_mutex;
+#   endif
+    
     void*           conndict;
+#   ifdef CONNDICT_MUTEX
+    pthread_mutex_t conndict_mutex;
+#   endif
     
     size_t          bufsize;
     
@@ -90,59 +121,6 @@ typedef struct {
 } backend_t;
 
 
-
-/// Search through the socklist to find the socket corresponding to supplied
-/// websocket.  ws_name refers to the "protocol name", from libwebsockets.
-/// Each "protocol name" must be bridged 1:1 to a corresponding daemon.
-///
-/// Called only when opening a new websocket (i.e. client connection)
-///
-/// Currently, the search is a linear search, because wfedd is not expected to
-/// be used with very many daemons.  If that changes, we can change this easily
-/// to a binary search, because the websocket:daemon bridging never changes
-/// during runtime.
-sockmap_t* sub_socklist_search(socklist_t* socklist, const char* ws_name) {
-    int i;
-    
-    if ((socklist == NULL) || (ws_name == NULL)) {
-        return NULL;
-    }
-    
-    for (i=0; i<socklist->size; i++) {
-        if (strcmp(socklist->map[i].websocket, ws_name) == 0) {
-            return &socklist->map[i];
-        }
-    }
-
-    return NULL;
-}
-
-
-
-//conn_t* sub_connlist_search(conn_t* conn, int fd_sock) {
-//    while (conn != NULL) {
-//        if (conn->fd_sock == fd_sock) {
-//            break;
-//        }
-//        conn = conn->next;
-//    }
-//    return conn;
-//}
-
-
-
-
-/// Send the IRQ and block until pollirq_cond is received.
-void sub_pollirq(backend_t* backend, const char* irq) {
-    int wait_test = 0;
-    
-    write(backend->pollirq_pipe[1], irq, 4);
-    
-    backend->pollirq_inactive = true;
-    while (backend->pollirq_inactive && (wait_test == 0)) {
-        wait_test = pthread_cond_wait(&backend->pollirq_cond, &backend->pollirq_mutex);
-    }
-}
 
 
 
@@ -278,7 +256,45 @@ conn_t* dict_get(void* handle, int id) {
 
 
 
+/// Search through the socklist to find the socket corresponding to supplied
+/// websocket.  ws_name refers to the "protocol name", from libwebsockets.
+/// Each "protocol name" must be bridged 1:1 to a corresponding daemon.
+///
+/// Called only when opening a new websocket (i.e. client connection)
+///
+/// Currently, the search is a linear search, because wfedd is not expected to
+/// be used with very many daemons.  If that changes, we can change this easily
+/// to a binary search, because the websocket:daemon bridging never changes
+/// during runtime.
+sockmap_t* sub_socklist_search(socklist_t* socklist, const char* ws_name) {
+    int i;
+    
+    if ((socklist == NULL) || (ws_name == NULL)) {
+        return NULL;
+    }
+    
+    for (i=0; i<socklist->size; i++) {
+        if (strcmp(socklist->map[i].websocket, ws_name) == 0) {
+            return &socklist->map[i];
+        }
+    }
 
+    return NULL;
+}
+
+
+
+/// Send the IRQ and block until pollirq_cond is received.
+void sub_pollirq(backend_t* backend, const char* irq) {
+    int wait_test = 0;
+    
+    write(backend->pollirq_pipe[1], irq, 4);
+    
+    backend->pollirq_inactive = true;
+    while (backend->pollirq_inactive && (wait_test == 0)) {
+        wait_test = pthread_cond_wait(&backend->pollirq_cond, &backend->pollirq_mutex);
+    }
+}
 
 
 
@@ -339,10 +355,10 @@ void* poll_unix(void* args) {
                 void* wsi;
                 ssize_t bytes_in;
                 
-                pthread_mutex_lock(&backend->conndict_mutex);
+                CONNDICT_LOCK(&backend->conndict_mutex);
                 conn    = dict_get(backend->conndict, fds[i].fd);
                 wsi     = (conn != NULL) ? conn->ws_handle : NULL;
-                pthread_mutex_unlock(&backend->conndict_mutex);
+                CONNDICT_UNLOCK(&backend->conndict_mutex);
             
                 if (conn != NULL) {
                     bytes_in = read(fds[i].fd, readbuf, backend->bufsize);
@@ -355,11 +371,11 @@ void* poll_unix(void* args) {
             else {
                 ///@todo drop the corresponding websocket and propagate some error to the client
                 // Delete this connection
-                pthread_mutex_lock(&backend->conndict_mutex);
+                CONNDICT_LOCK(&backend->conndict_mutex);
                 close(fds[i].fd);
                 dict_del(backend->conndict, fds[i].fd);
                 delta = -1;
-                pthread_mutex_unlock(&backend->conndict_mutex);
+                CONNDICT_UNLOCK(&backend->conndict_mutex);
             }
             
         }
@@ -385,7 +401,7 @@ void* poll_unix(void* args) {
             // ADD may reallocate the fds array
             // DEL will never change allocation
             if (strncmp((const char*)irqbuf, "ADD", 3) == 0) {
-                if ((poll_activefds % poll_groupfds) == 0) {
+                if (poll_allocfds <= poll_activefds) {
                     poll_allocfds = poll_activefds + poll_groupfds;
                     
                     free(fds);
@@ -411,7 +427,7 @@ void* poll_unix(void* args) {
             struct itemstruct* item;
             // Load the connlist.  Mutexed to prevent adds/dels from 
             // happenning concurrently
-            pthread_mutex_lock(&backend->conndict_mutex);
+            CONNDICT_LOCK(&backend->conndict_mutex);
             item = ((dict_t*)backend->conndict)->base;
             for (int i=1; i<poll_activefds; i++) {
                 if (item == NULL) {
@@ -422,7 +438,7 @@ void* poll_unix(void* args) {
                 fds[i].events   = (POLLIN | POLLNVAL | POLLHUP);
                 item            = (struct itemstruct*)(item->hh.next);
             }
-            pthread_mutex_unlock(&backend->conndict_mutex);
+            CONNDICT_UNLOCK(&backend->conndict_mutex);
             
             // Send the cond signal to unblock waiters
             ///@note Libwebsockets is single-threaded, but we do this anyway
@@ -461,47 +477,56 @@ void* backend_start(socklist_t* socklist) {
     if (handle->conndict == NULL) {
         goto backend_start_TERM1;
     }
-    if (pthread_mutex_init(&handle->conndict_mutex, NULL) != 0) {
+    
+#   ifdef GLOBAL_MUTEX
+    // Initialize poll mutex: This is a global mutex
+    if (pthread_mutex_init(&handle->global_mutex, NULL) != 0) {
         goto backend_start_TERM2;
     }
-    
-    // initialize connlist
-//    handle->connlist        = NULL;
-//    handle->connlist_tail   = NULL;
-//    if (pthread_mutex_init(&handle->connlist_mutex, NULL) != 0) {
-//        goto backend_start_TERM1;
-//    }
+#   endif
+#   ifdef CONNDICT_MUTEX
+    // Initialize conndict mutex
+    if (pthread_mutex_init(&handle->conndict_mutex, NULL) != 0) {
+        goto backend_start_TERM3;
+    }
+#   endif
     
     // Initialize the IRQ cond
     if (pthread_mutex_init(&handle->pollirq_mutex, NULL) != 0) {
-        goto backend_start_TERM3;
+        goto backend_start_TERM4;
     }
     if (pthread_cond_init(&handle->pollirq_cond, NULL) != 0) {
-        goto backend_start_TERM4;
+        goto backend_start_TERM5;
     }
     
     // initialize the IRQ Pipe
     if (pipe(handle->pollirq_pipe) != 0) {
-        goto backend_start_TERM5;
+        goto backend_start_TERM6;
     }
     
     // create the thread
     if (pthread_create(&handle->thread, NULL, &poll_unix, (void*)handle) != 0) {
-        goto backend_start_TERM6;
+        goto backend_start_TERM7;
     }
     
     backend_start_EXIT:
     return handle;
     
-    backend_start_TERM6:
+    backend_start_TERM7:
     close(handle->pollirq_pipe[0]);
     close(handle->pollirq_pipe[1]);
-    backend_start_TERM5:
+    backend_start_TERM6:
     pthread_cond_destroy(&handle->pollirq_cond);
-    backend_start_TERM4:
+    backend_start_TERM5:
     pthread_mutex_destroy(&handle->pollirq_mutex);
-    backend_start_TERM3:
+    backend_start_TERM4:
+#   ifdef CONNDICT_MUTEX
     pthread_mutex_destroy(&handle->conndict_mutex);
+#   endif
+    backend_start_TERM3:
+#   ifdef GLOBAL_MUTEX
+    pthread_mutex_destroy(&handle->global_mutex);
+#   endif
     backend_start_TERM2:
     dict_deinit(handle->conndict);
     backend_start_TERM1:
@@ -537,13 +562,32 @@ void backend_stop(void* handle) {
     // Destroy interrupt concurrency resources
     pthread_cond_destroy(&backend->pollirq_cond);
     pthread_mutex_destroy(&backend->pollirq_mutex);
+#   ifdef CONNDICT_MUTEX
     pthread_mutex_destroy(&backend->conndict_mutex);
+#   endif
     
     // Free the connection list
     dict_deinit(backend->conndict);
 
     // Free the backend object itself.
     free(backend);
+}
+
+
+
+int backend_queuemsg(void* backend_handle, void* conn_handle, void* data, size_t len) {
+    ///@note backend_handle currently unused.  Might be used in the future.
+    //backend_t*  backend = backend_handle;
+    conn_t*     conn    = conn_handle;
+    int         rc;
+    
+    if ((backend_handle == NULL) || (conn == NULL) || (data == NULL) || (len == 0)) {
+        return -1;
+    }
+    
+    rc = (int)write(conn->fd_sock, data, len);
+    
+    return rc;
 }
 
 
@@ -582,7 +626,7 @@ void* backend_conn_open(void* backend_handle, void* ws_handle, const char* ws_na
     }
     
     // Create a new connection entry based on the new client socket
-    pthread_mutex_lock(&backend->conndict_mutex);
+    CONNDICT_LOCK(&backend->conndict_mutex);
     conn = dict_add(&err, backend->conndict, fd_sock);
     if (err != 0) {
         if (conn != NULL) {
@@ -607,7 +651,7 @@ void* backend_conn_open(void* backend_handle, void* ws_handle, const char* ws_na
     // thread uptake the changes in the conndict
     /// 3. the polling thread will rebuild the fds list
     write(backend->pollirq_pipe[1], "ADD", 4);
-    pthread_mutex_unlock(&backend->conndict_mutex);
+    CONNDICT_UNLOCK(&backend->conndict_mutex);
     
     backend_conn_open_EXIT:
     return conn;
@@ -615,7 +659,7 @@ void* backend_conn_open(void* backend_handle, void* ws_handle, const char* ws_na
     backend_conn_open_TERM3:
     dict_del(backend->conndict, fd_sock);
     backend_conn_open_TERM2:
-    pthread_mutex_unlock(&backend->conndict_mutex);
+    CONNDICT_UNLOCK(&backend->conndict_mutex);
     close(fd_sock);
     backend_conn_open_TERM1:
     return NULL;
@@ -634,10 +678,10 @@ void backend_conn_close(void* backend_handle, void* conn_handle) {
     }
     
     // Remove this connection
-    pthread_mutex_lock(&backend->conndict_mutex);
+    CONNDICT_LOCK(&backend->conndict_mutex);
     fd_sock = conn->fd_sock;
     dict_del(backend->conndict, fd_sock);
-    pthread_mutex_unlock(&backend->conndict_mutex);
+    CONNDICT_UNLOCK(&backend->conndict_mutex);
     
     // sub_pollirq() will send the IRQ and block until poll thread services it.
     sub_pollirq(backend, "DEL");
