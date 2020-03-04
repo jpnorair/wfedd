@@ -80,10 +80,10 @@ OBJEXT      := o
 # Build flags, derived from above variables
 CFLAGS_DEBUG?= -std=gnu99 -Og -g -Wall $(OSCFLAGS) -pthread
 CFLAGS      ?= -std=gnu99 -O3 $(OSCFLAGS) -pthread
-INC         := $(EXT_INC) $(PATH_INCLWS) $(PATH_INCSSL) -I. -I./include -I./$(SYSDIR)/include -I./usr/local/include $(OSINC)
+INC         := $(EXT_INC) $(PATH_INCLWS) $(PATH_INCSSL) -I. -I./include -I./$(SYSDIR)/include -I/usr/local/include $(OSINC)
 INCDEP      := -I.
-LIBINC      := $(EXT_LIB) $(PATH_LIBLWS) $(PATH_LIBSSL) -L./$(SYSDIR)/lib -L./usr/local/lib $(OSLIBINC)
-LIB         := $(LIBSSL) $(LIBEVUV) -lglib-2.0 -lz -lc -lwebsockets
+LIBINC      := $(EXT_LIB) $(PATH_LIBLWS) $(PATH_LIBSSL) -L./$(SYSDIR)/lib -L/usr/local/lib $(OSLIBINC)
+LIB         := $(LIBSSL) $(LIBEVUV) -lglib-2.0 -lz -lc -lwebsockets -largtable
 
 # Export to local and subordinate makefiles
 WFEDD_OSCFLAGS:= $(OSCFLAGS)

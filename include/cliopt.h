@@ -56,7 +56,6 @@ bool cliopt_isquiet(void);
 
 FORMAT_Type cliopt_getformat(void);
 INTF_Type cliopt_getintf(void);
-size_t cliopt_getpoolsize(void);
 
 
 #endif /* cliopt_h */
