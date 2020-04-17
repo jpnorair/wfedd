@@ -142,10 +142,6 @@ int main(int argc, char* argv[]) {
         exitcode = 0;
         goto main_FINISH;
     }
-    
-//    if (fmt->count != 0) {
-//        fmt_val = sub_fmt_cmp(fmt->sval[0]);
-//    }
 
     /// Handle output arguments (verbose, debug, quiet)
     if (verbose->count != 0) {
