@@ -26,9 +26,12 @@
 
 #include "../local_lib/uthash.h"
 
+#include <libwebsockets.h>
+
 #include <errno.h>
 #include <limits.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,29 +48,7 @@
 #endif
 
 
-/// Mutex implementations
-/// LWS is sort of vague about how it should work with multithreads (the terse
-/// documentation just says "don't do it"), but as always, there is a way to do
-/// it right.  We are trying different mutex arrangements to allow it to work
-/// correctly.
 
-//#define GLOBAL_MUTEX
-#define CONNDICT_MUTEX
-
-#ifdef CONNDICT_MUTEX
-#   define CONNDICT_LOCK(MUTEX)     pthread_mutex_lock(MUTEX)
-#   define CONNDICT_UNLOCK(MUTEX)   pthread_mutex_unlock(MUTEX)
-#else
-#   define CONNDICT_LOCK(MUTEX);
-#   define CONNDICT_UNLOCK(MUTEX);
-#endif
-#ifdef GLOBAL_MUTEX
-#   define GLOBAL_LOCK(MUTEX)     pthread_mutex_lock(MUTEX)
-#   define GLOBAL_UNLOCK(MUTEX)   pthread_mutex_unlock(MUTEX)
-#else
-#   define GLOBAL_LOCK(MUTEX);
-#   define GLOBAL_UNLOCK(MUTEX);
-#endif
 
 
 /// Threads: only one will be called in wfedd().
@@ -81,43 +62,30 @@ void* poll_dbus(void* args);
 void* poll_tcp(void* args);
 
 
-/// This is a linked-list of connections between a websocket (frontend) and a
-/// and a backend socket.  Connections are N:1, such that multiple websockets
-/// identities, or vhosts, (i.e. the client side) can be connected to a single 
-/// backend daemon.
-typedef struct cs {
-    int         fd_sock;
-    sockmap_t*  sock_handle;
-    void*       ws_handle;
-    
-    struct sockaddr_un addr;
-    
-    //int             id;
-    //unsigned int    flags;
-    
-//    struct cs*  next;
-//    struct cs*  prev;
-} conn_t;
+
+
+typedef enum {
+    BIRQ_NONE       = 0x00,
+    BIRQ_GLOBAL     = 0x01,
+    BIRQ_ALL        = 0xFF
+} birq_type;
 
 typedef struct {
-    pthread_t       thread;
-    socklist_t*     socklist;
-    
-#   ifdef GLOBAL_MUTEX
-    pthread_mutex_t global_mutex;
-#   endif
-    
-    void*           conndict;
-#   ifdef CONNDICT_MUTEX
-    pthread_mutex_t conndict_mutex;
-#   endif
-    
-    size_t          bufsize;
-    
-    int             pollirq_pipe[2];
-    bool            pollirq_inactive;
-    pthread_cond_t  pollirq_cond;
-    pthread_mutex_t pollirq_mutex;
+    int         active;
+    int         group;
+    int         total;
+    bool        remap_pended;
+    useconds_t  wait_us;
+} fdsparam_t;
+
+typedef struct {
+    struct lws_context* ws_context;
+    socklist_t*         socklist;
+    void*               conndict;
+    struct pollfd*      fds;
+    fdsparam_t          fdsparam;
+    size_t              bufsize;
+    birq_type           irq;
 } backend_t;
 
 
@@ -125,6 +93,22 @@ typedef struct {
 
 
 /// ----- Connection Dictionary ---------
+/// This is a connection to a backend client socket from a frontend websocket.
+/// Daemons are expected to be able to handle multiple client connections.
+/// Connections are stored in a hash table.
+typedef struct cs {
+    int         fd_client;
+    sockmap_t*  sock_handle;
+    void*       ws_handle;
+    struct sockaddr_un addr;
+} conn_t;
+
+typedef enum {
+    ITEM_CONN,
+    ITEM_WSPOLLFD,
+    ITEM_MAX
+} dict_itemtype;
+
 typedef union {
     void* pointer;
     int64_t integer;
@@ -133,7 +117,11 @@ typedef union {
 
 struct itemstruct {
     int id;
-    conn_t conn;
+    dict_itemtype type;
+    
+    //conn_t conn;
+    void* data;
+    
     UT_hash_handle hh;
 };
 
@@ -192,6 +180,7 @@ int dict_del(void* handle, int id) {
             input = sub_finditem(dict, id);
             if (input != NULL) {
                 HASH_DEL(dict->base, input);
+                free(input->data);
                 free(input);
                 dels = 1;
                 dict->size--;
@@ -202,37 +191,57 @@ int dict_del(void* handle, int id) {
 }
 
 
-conn_t* dict_add(int* err, void* handle, int id) {
+void* dict_new(int* err, void* handle, int id, dict_itemtype type) {
     struct itemstruct* input;
     dict_t* dict;
+    size_t data_alloc;
+    int rc;
+    void* rp = NULL;
     
     if (handle == NULL) {
-        if (err != NULL) *err = 1;
-        return NULL;
+        rc = 1;
+        goto dict_new_EXIT;
     }
-    
     dict = handle;
+    
     input = sub_finditem(dict, id);
     if (input != NULL) {
-        if (err != NULL) *err = 2;
-        return &input->conn;
+        rc = 2;
+        rp = input->data;
+        goto dict_new_EXIT;
     }
     
     input = malloc(sizeof(struct itemstruct));
     if (input == NULL) {
-        if (err != NULL) *err = 3;
-        return NULL;
+        rc = 3;
+        goto dict_new_EXIT;
     }
-    input->id = id;
     
+    switch (type) {
+        default:
+        case ITEM_CONN:         data_alloc = sizeof(conn_t);        break;
+        case ITEM_WSPOLLFD:     data_alloc = sizeof(struct pollfd); break;
+    }
+    input->data = malloc(data_alloc);
+    if (input->data == NULL) {
+        free(input);
+        rc = 4;
+        goto dict_new_EXIT;
+    }
+    
+    input->id = id;
     dict->size++;
-    if (err != NULL) *err = 0;
-    return &input->conn;
+    rp = input->data;
+    rc = 0;
+    
+    dict_new_EXIT:
+    if (err != NULL) *err = rc;
+    return rp;
 }
 
 
 
-conn_t* dict_get(void* handle, int id) {
+void* dict_get(void* handle, int id, dict_itemtype type) {
     struct itemstruct* item;
     dict_t* dict;
     
@@ -241,7 +250,9 @@ conn_t* dict_get(void* handle, int id) {
         if (dict->base != NULL) {
             item = sub_finditem(dict, id);
             if (item != NULL) {
-                return &item->conn;
+                if (item->type == type) {
+                    return item->data;
+                }
             }
         }
     }
@@ -251,6 +262,7 @@ conn_t* dict_get(void* handle, int id) {
 
 
 /// --------------------------------------
+
 
 
 
@@ -283,19 +295,81 @@ sockmap_t* sub_socklist_search(socklist_t* socklist, const char* ws_name) {
 }
 
 
-
-/// Send the IRQ and block until pollirq_cond is received.
-void sub_pollirq(backend_t* backend, const char* irq) {
-    int wait_test = 0;
+void sub_remap_innerloop(backend_t* backend) {
+/// Remap the pollfds array based on a revised conndict
+    struct itemstruct*  dict_item;
+    int i = 0;
     
-    write(backend->pollirq_pipe[1], irq, 4);
+    // Start at the front of the conndict linked-list
+    dict_item = ((dict_t*)backend->conndict)->base;
     
-    backend->pollirq_inactive = true;
-    while (backend->pollirq_inactive && (wait_test == 0)) {
-        wait_test = pthread_cond_wait(&backend->pollirq_cond, &backend->pollirq_mutex);
+    // Move through the list until reaching a NULL item (the end of it).
+    // load the updated conndict information into the backend fds array
+    while (dict_item != NULL) {
+        if (dict_item->type == ITEM_CONN) {
+            backend->fds[i].fd      = ((conn_t*)dict_item->data)->fd_client;
+            backend->fds[i].events  = (POLLIN | POLLNVAL | POLLHUP);
+        }
+        else {
+            backend->fds[i] = *((struct pollfd*)dict_item->data);
+        }
+        dict_item = (struct itemstruct*)(dict_item->hh.next);
+        i++;
     }
+    
+    backend->fdsparam.active        = i;
+    backend->fdsparam.remap_pended  = true;
 }
 
+
+int sub_remap_withadd(backend_t* backend) {
+    int rc = 0;
+    
+    if (backend->fds == NULL) {
+        return -1;
+    }
+
+    // Reallocate the fds if that is necessary
+    // Allocation is done in chunks of size = backend->fdsparam.group
+    ///@note sub_remap_innerloop() will reload the conndict information into
+    ///      backend->fds
+    if (backend->fdsparam.total <= backend->fdsparam.active) {
+        struct pollfd*  fds;
+        backend->fdsparam.total = backend->fdsparam.active + backend->fdsparam.group;
+        
+        fds = calloc(backend->fdsparam.total, sizeof(struct pollfd));
+        if (fds == NULL) {
+            rc = -2;
+            goto backend_conn_add_EXIT;
+        }
+        
+        // Free the old data.  It will get reloaded in sub_remap_innerloop().
+        free(backend->fds);
+        backend->fds = fds;
+    }
+    
+    backend->fdsparam.active += 1;
+    sub_remap_innerloop(backend);
+    
+    backend_conn_add_EXIT:
+    return rc;
+}
+
+
+int sub_remap_withdel(backend_t* backend) {
+    int rc = 0;
+    
+    if (backend->fds == NULL) {
+        return -1;
+    }
+    
+    if (backend->fdsparam.active >= 1) {
+        backend->fdsparam.active--;
+        sub_remap_innerloop(backend);
+    }
+    
+    return rc;
+}
 
 
 
@@ -303,17 +377,8 @@ void sub_pollirq(backend_t* backend, const char* irq) {
 
 void* poll_unix(void* args) {
     backend_t* backend  = args;
-    struct pollfd* fds  = NULL;
     uint8_t* readbuf;
-    
     int ready_fds;
-    
-    // Initial fd list is a single interruptor pipe
-    // "poll_groupfds" is the reallocation chunk size
-    // "poll_activefds" is the number of actually used fds
-    int poll_activefds  = 1;
-    int poll_groupfds   = 4;
-    int poll_allocfds   = 4;
     
     // Read buffer is allocated to a certain size dictated at wfedd startup
     readbuf = malloc(backend->bufsize * sizeof(uint8_t));
@@ -322,130 +387,75 @@ void* poll_unix(void* args) {
         goto poll_unix_TERM;
     }
     
-    // Allocate the fd array
-    fds = calloc(poll_allocfds, sizeof(struct pollfd));
-    if (fds == NULL) {
-        ///@todo global error
+    // Main operating Loop
+    poll_unix_MAIN:
+    backend->fdsparam.remap_pended = false;
+    
+    // If there are no active fds, we wait for a period.
+    if (backend->fdsparam.active <= 0) {
+        usleep(backend->fdsparam.wait_us);
+        goto poll_unix_MAIN;
+    }
+    
+    ready_fds = poll(backend->fds, backend->fdsparam.active, backend->fdsparam.wait_us/1000 );
+    if (ready_fds < 0) {
+        // poll() has been interrupted.
+        // This can happen if the thread is cancelled.
         goto poll_unix_TERM;
     }
-    fds[0].fd       = backend->pollirq_pipe[0];
-    fds[0].events   = (POLLIN | POLLNVAL | POLLHUP);
+    if (ready_fds == 0) {
+        // poll() has timed-out.
+        // - This is a routine service interval.
+        // - Check the backend status flag and take appropriate actions.
+        switch (backend->irq) {
+            case BIRQ_NONE:     goto poll_unix_MAIN;
+            case BIRQ_GLOBAL:   goto poll_unix_TERM;
+            default:            goto poll_unix_TERM;
+        }
+    }
     
-    // Main thread loop
-    while (1) {
-        int delta = 0;
+    // Go through the fd array and service all fds with pending data
+    // The first operation is lws_service_fd(), which is part of libwebsockets.
+    // It will deal with any fd that has a websocket on it, and then it will
+    // set the revents of that pollfd to zero.
+    for (int i=0; i<backend->fdsparam.active; i++) {
         
-        ready_fds = poll(fds, poll_activefds, -1);
-        if (ready_fds < 0) {
-            // poll() has been interrupted.  Most likely via pthreads_cancel().
-            goto poll_unix_TERM;
+        // Handle websockets.  Websockets (the frontend) will open or close
+        // client connections to backend daemons as they open or close, so we
+        // need to consider that the pollfd array will change.  That's what
+        // remap_pended flag is for.
+        lws_service_fd(backend->ws_context, &(backend->fds[i]));
+        if (backend->fdsparam.remap_pended) {
+            goto poll_unix_MAIN;
         }
-        if (ready_fds == 0) {
-            // This is a timeout with no fds reporting.  
-            // This should not occur in the current implementation.
-            // It is currently ignored.
-            continue;
-        }
-        
-        // Go through the fds[1:], back to front.
-        for (int i=(poll_activefds-1); i>0; i--) {
-            // The daemon socket has data to forward
-            if (fds[i].revents == POLLIN) {
-                conn_t* conn;
-                void* wsi;
-                ssize_t bytes_in;
-                
-                CONNDICT_LOCK(&backend->conndict_mutex);
-                conn    = dict_get(backend->conndict, fds[i].fd);
-                wsi     = (conn != NULL) ? conn->ws_handle : NULL;
-                CONNDICT_UNLOCK(&backend->conndict_mutex);
+    
+        // Websocket case has been handled above.  If FD was a websocket, now
+        // the revents will be 0.  So, if FD revents is nonzero, then there's 
+        // a daemon cilent socket that has something to handle.
+        if (backend->fds[i].revents == POLLIN) {
+            ssize_t bytes_in;
+            conn_t* conn;
             
-                if (conn != NULL) {
-                    bytes_in = read(fds[i].fd, readbuf, backend->bufsize);
-                    if (bytes_in > 0) {
-                        frontend_queuemsg(wsi, readbuf, bytes_in);
-                    }
+            // Conn object contains the link to the websocket frontend.
+            // Forward the data on this client socket to the websocket.
+            conn = (conn_t*)dict_get(backend->conndict, backend->fds[i].fd, ITEM_CONN);
+            if (conn != NULL) {
+                bytes_in = read(backend->fds[i].fd, readbuf, backend->bufsize);
+                if (bytes_in > 0) {
+                    frontend_queuemsg(conn->ws_handle, readbuf, bytes_in);
                 }
             }
-            // The daemon socket has dropped!
-            else {
-                ///@todo drop the corresponding websocket and propagate some error to the client
-                // Delete this connection
-                CONNDICT_LOCK(&backend->conndict_mutex);
-                close(fds[i].fd);
-                dict_del(backend->conndict, fds[i].fd);
-                delta = -1;
-                CONNDICT_UNLOCK(&backend->conndict_mutex);
-            }
-            
         }
         
-        // fds[0] is the irq pipe, which is a special case.
-        // It controls alterations to the fds array based on active connections
-        if (fds[0].revents != 0) {
-            uint8_t irqbuf[4];
-            ssize_t bytes_in = 0;
-            
-            // Anything other than POLLIN on the IRQ is a fatal error
-            if (fds[0].revents != POLLIN) {
-                ///@todo global error
-                goto poll_unix_TERM;
-            }
-            
-            // Read the IRQ command off the pipe.
-            while (bytes_in < 4) {
-                bytes_in += read(fds[0].fd, &irqbuf[bytes_in], 4-bytes_in);
-            }
-            
-            // There are two interrupts, ADD and DEL
-            // ADD may reallocate the fds array
-            // DEL will never change allocation
-            if (strncmp((const char*)irqbuf, "ADD", 3) == 0) {
-                if (poll_allocfds <= poll_activefds) {
-                    poll_allocfds = poll_activefds + poll_groupfds;
-                    
-                    free(fds);
-                    fds = calloc(poll_allocfds, sizeof(struct pollfd));
-                    if (fds == NULL) {
-                        ///@todo global error
-                        goto poll_unix_TERM;
-                    }
-                    fds[0].fd       = backend->pollirq_pipe[0];
-                    fds[0].events   = (POLLIN | POLLNVAL | POLLHUP);
-                }
-                delta           = 1;
-                poll_activefds += 1;
-            }
-            else if (strncmp((const char*)irqbuf, "DEL", 3) == 0) {
-                delta           = (poll_activefds < 1) ? -1 : 0;
-                poll_activefds += delta;
-            }
-        }
-        
-        // Rebuild the fds array if there is some change to the connlist
-        if (delta != 0) {
-            struct itemstruct* item;
-            // Load the connlist.  Mutexed to prevent adds/dels from 
-            // happenning concurrently
-            CONNDICT_LOCK(&backend->conndict_mutex);
-            item = ((dict_t*)backend->conndict)->base;
-            for (int i=1; i<poll_activefds; i++) {
-                if (item == NULL) {
-                    poll_activefds = i;
-                    break;
-                }
-                fds[i].fd       = item->conn.fd_sock;
-                fds[i].events   = (POLLIN | POLLNVAL | POLLHUP);
-                item            = (struct itemstruct*)(item->hh.next);
-            }
-            CONNDICT_UNLOCK(&backend->conndict_mutex);
-            
-            // Send the cond signal to unblock waiters
-            ///@note Libwebsockets is single-threaded, but we do this anyway
-            pthread_mutex_lock(&backend->pollirq_mutex);
-            backend->pollirq_inactive = false;
-            pthread_cond_broadcast(&backend->pollirq_cond);
-            pthread_mutex_unlock(&backend->pollirq_mutex);
+        // FD is not a websocket (it is daemon client) and does not have new data.
+        // We consider this to mean that the daemon client socket has dropped.
+        // As a result, we close this connection.
+        else if (backend->fds[i].revents != 0) {
+            ///@todo drop the corresponding websocket and propagate some error to the client
+            close(backend->fds[i].fd);
+            dict_del(backend->conndict, backend->fds[i].fd);
+            sub_remap_withdel(backend);
+            goto poll_unix_MAIN;
         }
     }
 
@@ -456,122 +466,122 @@ void* poll_unix(void* args) {
 
 
 
+///@todo could have sig input correspond to some IRQs.
+volatile birq_type* birq_pointer;
+void backend_inthandler(int sig) {
+    *birq_pointer = BIRQ_GLOBAL;
+}
 
 
 
+///@todo for single threaded mode, change to backend_run
+int backend_run(socklist_t* socklist, 
+                int intsignal,
+                int logs_mask,
+                bool do_hostcheck,
+                bool do_fastmonitoring,
+                const char* hostname,
+                int port_number,
+                const char* certpath,
+                const char* keypath,
+                struct lws_protocols* protocols,
+                struct lws_http_mount* mount) {
 
-void* backend_start(socklist_t* socklist) {
-    backend_t* handle;
+    int rc = 0;
+    backend_t backend;
+    void* poll_rc;
     
-    // create backend handle
-    handle = malloc(sizeof(backend_t));
-    if (handle == NULL) {
-        goto backend_start_EXIT;
-    }
-    handle->socklist        = socklist;
-    handle->pollirq_pipe[0] = -1;
-    handle->pollirq_pipe[1] = -1;
+    /// 1. Initialize the backend object
+    
+    // Things that must be initialized externally
+    backend.socklist = socklist;
     
     // initialize conndict
-    handle->conndict    = dict_init();
-    if (handle->conndict == NULL) {
-        goto backend_start_TERM1;
+    backend.conndict = dict_init();
+    if (backend.conndict == NULL) {
+        rc = -1;
+        goto backend_run_EXIT;
     }
     
-#   ifdef GLOBAL_MUTEX
-    // Initialize poll mutex: This is a global mutex
-    if (pthread_mutex_init(&handle->global_mutex, NULL) != 0) {
-        goto backend_start_TERM2;
-    }
-#   endif
-#   ifdef CONNDICT_MUTEX
-    // Initialize conndict mutex
-    if (pthread_mutex_init(&handle->conndict_mutex, NULL) != 0) {
-        goto backend_start_TERM3;
-    }
-#   endif
-    
-    // Initialize the IRQ cond
-    if (pthread_mutex_init(&handle->pollirq_mutex, NULL) != 0) {
-        goto backend_start_TERM4;
-    }
-    if (pthread_cond_init(&handle->pollirq_cond, NULL) != 0) {
-        goto backend_start_TERM5;
+    // Configure backend parameters
+    backend.fds = calloc(backend.fdsparam.total, sizeof(struct pollfd));
+    if (backend.fds == NULL) {
+        rc = -2;
+        goto backend_run_EXIT;
     }
     
-    // initialize the IRQ Pipe
-    if (pipe(handle->pollirq_pipe) != 0) {
-        goto backend_start_TERM6;
+    // Initial fd list is a single interruptor pipe
+    // "poll_groupfds" is the reallocation chunk size
+    // "poll_activefds" is the number of actually used fds
+    backend.fdsparam.active = 0;
+    backend.fdsparam.group  = 4;
+    backend.fdsparam.total  = 8;
+    
+    // This is a flag that tells the polling loop to restart.
+    // It is set to true if the fds array is reallocated.
+    backend.fdsparam.remap_pended = false;
+    
+    // This is the amount of microseconds to wait if there are no websockets
+    // and no daemons to poll.  Default is 10 ms.
+    backend.fdsparam.wait_us = 10 * 1000;
+    
+    /// 2. Initialize the frontend and link it back into the websocket context
+    backend.ws_context = frontend_start(&backend, logs_mask, do_hostcheck, 
+                            do_fastmonitoring, hostname, port_number, certpath, 
+                            keypath, protocols, mount);
+    if (backend.ws_context == NULL) {
+        rc = -3;
+        goto backend_run_EXIT;
     }
     
-    // create the thread
-    if (pthread_create(&handle->thread, NULL, &poll_unix, (void*)handle) != 0) {
-        goto backend_start_TERM7;
+    /// 3. Run the backend loop.  There's an interrupt signal configured to
+    ///    stop the backend loop, which is generally SIGINT.
+    /// @todo maybe there's a way to pass a backend handle via sigaction.
+    birq_pointer = &(backend.irq);
+    signal(intsignal, backend_inthandler);
+    
+    ///@note The architecture used here could allow threads, but it's much easier
+    ///      to use libwebsockets in a single-threaded manner.
+    ///@todo select the appropriate poll loop based on socket daemon specification.
+    poll_rc = poll_unix((void*)&backend);
+    
+    /// 4. Runtime loop is over, so first close the libwebsockets context, and 
+    ///    second, close all the backend socket fds.
+    ///@todo detach signal?
+    frontend_stop(backend.ws_context);
+    
+    {   struct itemstruct*  dict_item;
+
+        // Start at the front of the conndict linked-list
+        dict_item = ((dict_t*)backend.conndict)->base;
+        while (dict_item != NULL) {
+            if (dict_item->type == ITEM_CONN) {
+                close( ((conn_t*)dict_item->data)->fd_client );
+            }
+            ///@note not sure if we actually need to close these, or if lws does it for us.
+            else if (dict_item->type == ITEM_WSPOLLFD) {
+                close( ((struct pollfd*)dict_item->data)->fd );
+            }
+            dict_item = (struct itemstruct*)(dict_item->hh.next);
+        }
     }
     
-    backend_start_EXIT:
-    return handle;
-    
-    backend_start_TERM7:
-    close(handle->pollirq_pipe[0]);
-    close(handle->pollirq_pipe[1]);
-    backend_start_TERM6:
-    pthread_cond_destroy(&handle->pollirq_cond);
-    backend_start_TERM5:
-    pthread_mutex_destroy(&handle->pollirq_mutex);
-    backend_start_TERM4:
-#   ifdef CONNDICT_MUTEX
-    pthread_mutex_destroy(&handle->conndict_mutex);
-#   endif
-    backend_start_TERM3:
-#   ifdef GLOBAL_MUTEX
-    pthread_mutex_destroy(&handle->global_mutex);
-#   endif
-    backend_start_TERM2:
-    dict_deinit(handle->conndict);
-    backend_start_TERM1:
-    free(handle);
-    return NULL;
+    backend_run_EXIT:
+    switch (rc) {
+        default:    
+        case -3:    free(backend.fds);
+        case -2:    dict_deinit(backend.conndict);
+        case -1:    break;
+    }
+    return rc;
 }
 
 
-void backend_stop(void* handle) {
-    backend_t* backend = handle;
-    
-    if (backend == NULL) {
-        return;
-    }
-    
-    // Kill the thread, interrupting poll() as needed
-    if (pthread_cancel(backend->thread) == 0) {
-        pthread_join(backend->thread, NULL);
-    }
-    else {
-        ///@todo thread could not be cancelled, log some type of error
-        return;
-    }
-    
-    // Close the interrupt pipes
-    if (backend->pollirq_pipe[0] >= 0) {
-        close(backend->pollirq_pipe[0]);
-    }
-    if (backend->pollirq_pipe[1] >= 0) {
-        close(backend->pollirq_pipe[1]);
-    }
-    
-    // Destroy interrupt concurrency resources
-    pthread_cond_destroy(&backend->pollirq_cond);
-    pthread_mutex_destroy(&backend->pollirq_mutex);
-#   ifdef CONNDICT_MUTEX
-    pthread_mutex_destroy(&backend->conndict_mutex);
-#   endif
-    
-    // Free the connection list
-    dict_deinit(backend->conndict);
 
-    // Free the backend object itself.
-    free(backend);
-}
+
+
+
+
 
 
 
@@ -585,21 +595,94 @@ int backend_queuemsg(void* backend_handle, void* conn_handle, void* data, size_t
         return -1;
     }
     
-    rc = (int)write(conn->fd_sock, data, len);
+    rc = (int)write(conn->fd_client, data, len);
     
     return rc;
 }
 
 
 
-/// Used by frontend when a websocket is opened
-void* backend_conn_open(void* backend_handle, void* ws_handle, const char* ws_name) {
+
+
+///@todo Used by backend_ctrl_callback() when a websocket itself is opened
+int conn_ws_open(void* backend_handle, struct pollfd* ws_pollfd) {
+    backend_t* backend;
+    struct pollfd* newpollfd;
+    int err = 0;
+    
+    if ((backend_handle == NULL) || (ws_pollfd == NULL)) {
+        return -1;
+    }
+    backend = backend_handle;
+    
+    // Create a new ws pollfd entry based on the new client socket
+    newpollfd = (struct pollfd*)dict_new(&err, backend->conndict, ws_pollfd->fd, ITEM_WSPOLLFD);
+    if (err != 0) {
+        if (newpollfd != NULL) {
+            // this fd already exists in the conndict.  That's a problem that needs to be debugged
+            printf("fd collision in conndict (fd = %i)\n", ws_pollfd->fd);
+        }
+    }
+    else {
+        *newpollfd = *ws_pollfd;
+    }
+    
+    return err;
+}
+
+
+///@todo Used by backend_ctrl_callback() when a websocket itself is closed
+int conn_ws_close(void* backend_handle, struct pollfd* ws_pollfd) {
+    backend_t* backend;
+    int deletions = 0;
+    
+    if ((backend_handle == NULL) || (ws_pollfd == NULL)) {
+        return -1;
+    }
+    backend = backend_handle;
+    
+    // Delete a ws pollfd entry
+    deletions = dict_del(backend->conndict, ws_pollfd->fd);
+    switch (deletions) {
+        case 0: printf("fd marked for delete not found in conndict (fd = %i)\n", ws_pollfd->fd);
+                return -2;
+        case 1: return 0;
+       default: printf("fd marked for delete not unique in conndict (fd = %i)\n", ws_pollfd->fd);
+                return deletions;
+    }
+}
+
+
+///@todo Used by backend_ctrl_callback() when a websocket itself is updated
+int conn_ws_update(void* backend_handle, struct pollfd* ws_pollfd) {
+    backend_t* backend;
+    struct pollfd* modpollfd;
+    
+    if ((backend_handle == NULL) || (ws_pollfd == NULL)) {
+        return -1;
+    }
+    backend = backend_handle;
+    
+    // Create a new ws pollfd entry based on the new client socket
+    modpollfd = (struct pollfd*)dict_get(backend->conndict, ws_pollfd->fd, ITEM_WSPOLLFD);
+    if (modpollfd == NULL) {
+        printf("fd not found in conndict (fd = %i)\n", ws_pollfd->fd);
+        return -1;
+    }
+
+    *modpollfd = *ws_pollfd;
+    return 0;
+}
+
+
+/// Used by frontend when a websocket opens a client connection
+void* conn_cli_open(void* backend_handle, void* ws_handle, const char* ws_name) {
     backend_t*  backend = backend_handle;
     conn_t*     conn    = NULL;
     sockmap_t*  lsock;
     struct stat statdata;
     int err;
-    int fd_sock;
+    int fd_client;
     
     if ((backend_handle == NULL) || (ws_handle == NULL) || (ws_name == NULL)) {
         return NULL;
@@ -620,74 +703,65 @@ void* backend_conn_open(void* backend_handle, void* ws_handle, const char* ws_na
     }
     
     // Create a client socket
-    fd_sock = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd_sock < 0) {
+    fd_client = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd_client < 0) {
         goto backend_conn_open_TERM1;
     }
     
     // Create a new connection entry based on the new client socket
-    CONNDICT_LOCK(&backend->conndict_mutex);
-    conn = dict_add(&err, backend->conndict, fd_sock);
+    conn = (conn_t*)dict_new(&err, backend->conndict, fd_client, ITEM_CONN);
     if (err != 0) {
         if (conn != NULL) {
             // this fd already exists in the conndict.  That's a problem that needs to be debugged
-            printf("fd collision in conndict (fd = %i)\n", fd_sock);
+            printf("fd collision in conndict (fd = %i)\n", fd_client);
         }
         goto backend_conn_open_TERM2;
     }
-    conn->fd_sock           = fd_sock;
+    conn->fd_client         = fd_client;
     conn->sock_handle       = lsock;
     conn->ws_handle         = ws_handle;
     conn->addr.sun_family   = AF_UNIX;
     snprintf(conn->addr.sun_path, UNIX_PATH_MAX, "%s", lsock->l_socket);
     
     // Open a connection to the client socket
-    if (connect(conn->fd_sock, (struct sockaddr *)&conn->addr, sizeof(struct sockaddr_un)) < 0) {
+    if (connect(conn->fd_client, (struct sockaddr *)&conn->addr, sizeof(struct sockaddr_un)) < 0) {
         goto backend_conn_open_TERM3;
     }
     
-    // writing to pollirq_pipe[1] will interrupt the poll() call in the daemon 
-    // socket polling thread.  We need to do this in order to have the polling
-    // thread uptake the changes in the conndict
-    /// 3. the polling thread will rebuild the fds list
-    write(backend->pollirq_pipe[1], "ADD", 4);
-    CONNDICT_UNLOCK(&backend->conndict_mutex);
+    // Finally, remap the backend polling array
+    sub_remap_withadd(backend);
     
+    // Successful exit
     backend_conn_open_EXIT:
     return conn;
     
     backend_conn_open_TERM3:
-    dict_del(backend->conndict, fd_sock);
+    dict_del(backend->conndict, fd_client);
     backend_conn_open_TERM2:
-    CONNDICT_UNLOCK(&backend->conndict_mutex);
-    close(fd_sock);
+    close(fd_client);
     backend_conn_open_TERM1:
     return NULL;
     
 }
 
 
-/// Used by frontend when a websocket is closed
-void backend_conn_close(void* backend_handle, void* conn_handle) {
+/// Used by frontend when a websocket closes a client connection
+void conn_cli_close(void* backend_handle, void* conn_handle) {
     backend_t*  backend = backend_handle;
     conn_t*     conn    = conn_handle;
-    int         fd_sock;
+    int         fd_client;
 
     if ((backend_handle == NULL) || (conn_handle == NULL)) {
         return;
     }
     
-    // Remove this connection
-    CONNDICT_LOCK(&backend->conndict_mutex);
-    fd_sock = conn->fd_sock;
-    dict_del(backend->conndict, fd_sock);
-    CONNDICT_UNLOCK(&backend->conndict_mutex);
+    // Close this connection
+    fd_client = conn->fd_client;
+    close(fd_client);
     
-    // sub_pollirq() will send the IRQ and block until poll thread services it.
-    sub_pollirq(backend, "DEL");
-    
-    // close the connection to the socket & release the connection memory
-    close(fd_sock);
+    // Remap the poll array without the removed connection
+    dict_del(backend->conndict, fd_client);
+    sub_remap_withdel(backend);
 }
 
 

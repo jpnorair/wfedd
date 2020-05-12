@@ -40,17 +40,38 @@ typedef struct {
 } socklist_t;
 
 
+int backend_ctrl_callback(  struct lws *wsi, 
+                            enum lws_callback_reasons reason, 
+                            void *user, 
+                            void *in, 
+                            size_t len);
 
-void* backend_start(socklist_t* socklist);
-
-void backend_stop(void* handle);
-
+int backend_run(socklist_t* socklist,
+                int intsignal,
+                int logs_mask,
+                bool do_hostcheck,
+                bool do_fastmonitoring,
+                const char* hostname,
+                int port_number,
+                const char* certpath,
+                const char* keypath,
+                struct lws_protocols* protocols,
+                struct lws_http_mount* mount
+                );
 
 int backend_queuemsg(void* backend_handle, void* conn_handle, void* data, size_t len);
 
-void* backend_conn_open(void* backend_handle, void* ws_handle, const char* ws_name);
 
-void backend_conn_close(void* backend_handle, void* conn_handle);
+//void* backend_conn_open(void* backend_handle, void* ws_handle, const char* ws_name);
+void* conn_cli_open(void* backend_handle, void* ws_handle, const char* ws_name);
+
+//void backend_conn_close(void* backend_handle, void* conn_handle);
+void conn_cli_close(void* backend_handle, void* conn_handle);
+
+
+int conn_ws_open(void* backend_handle, struct pollfd* ws_pollfd);
+int conn_ws_close(void* backend_handle, struct pollfd* ws_pollfd);
+int conn_ws_update(void* backend_handle, struct pollfd* ws_pollfd);
 
 
 

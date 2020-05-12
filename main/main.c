@@ -344,13 +344,14 @@ int wfedd(  const char* rsrcpath,
         return -1;
     }
     
+    /// The "Protocol-0" is HTTP.  
     // HTTP server protocol, first in the list
     protocols[0].name                   = protocol_http;
-    protocols[0].callback               = lws_callback_http_dummy;
+    protocols[0].callback               = frontend_http_callback;
     protocols[0].per_session_data_size  = 0;
     protocols[0].rx_buffer_size         = 0;
     protocols[0].id                     = 0;
-    protocols[0].user                   = NULL;
+    protocols[0].user                   = NULL; ///@todo maybe needs to be backend_handle
     protocols[0].tx_packet_size         = 0;
     
     // Each websocket protocol
@@ -358,11 +359,11 @@ int wfedd(  const char* rsrcpath,
     for (int i=0; i<socklist->size; i++) {
         int j = i+1;
         protocols[j].name                   = socklist->map[i].websocket;
-        protocols[j].callback               = frontend_callback;
+        protocols[j].callback               = frontend_ws_callback;
         protocols[j].per_session_data_size  = sizeof(struct per_session_data);
         protocols[j].rx_buffer_size         = 128;
         protocols[j].id                     = 0;
-        protocols[j].user                   = NULL;
+        protocols[j].user                   = NULL; ///@todo maybe needs to be backend_handle
         protocols[j].tx_packet_size         = 0;
     }
     
@@ -405,15 +406,9 @@ int wfedd(  const char* rsrcpath,
         printf(" * %s\n", certpath);
         printf(" * %s\n", keypath);
     }
-    
-    ///3. start the backend.  This is the part that manages "local" sockets.
-    backend_handle = backend_start(socklist);
-    if (backend_handle == NULL) {
-        exitcode = 4;
-    }
 
-    ///4. start the frontend.  This is the part that manages the websockets.
-    
+    ///3. Run the polling subsystem (backend).
+    ///   This will also invoke the frontend parts, which is the libwebsockets element.
     // Logs configuration (to stdout)
     logs_mask = LLL_USER | LLL_ERR | LLL_WARN | LLL_NOTICE
     /* for LLL_ verbosity above NOTICE to be built into lws,
@@ -422,10 +417,8 @@ int wfedd(  const char* rsrcpath,
     /* | LLL_INFO */ /* | LLL_PARSER */ /* | LLL_HEADER */
     /* | LLL_EXT */ /* | LLL_CLIENT */ /* | LLL_LATENCY */
     /* | LLL_DEBUG */;
-    
-    // Run the LWS frontend.  This will block and exit on supplied signal.
-    frontend_handle = frontend_start(
-                backend_handle,
+    backend_run(socklist,
+                SIGINT,
                 logs_mask, 
                 false,  ///@todo -h argument from demo app (do_hostcheck)
                 false,  ///@todo -v argument from demo app (do_fastmonitoring)
@@ -434,20 +427,11 @@ int wfedd(  const char* rsrcpath,
                 use_tls ? certpath : NULL,
                 use_tls ? keypath : NULL,
                 protocols,
-                &mount
-            );
-    if (frontend_handle == NULL) {
-        exitcode = 5;
-        goto wfedd_FINISH;
-    }
-        
-    /// Run frontend until control interrupt hits
-    frontend_wait(frontend_handle, SIGQUIT);
+                &mount      );
     
     wfedd_FINISH:
     switch (exitcode) {
        default: 
-        case 5: backend_stop(backend_handle);
         case 4: free(str_mountorigin);
         case 3: free(keypath);
         case 2: free(certpath);

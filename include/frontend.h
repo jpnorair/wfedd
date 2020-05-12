@@ -62,13 +62,17 @@ struct per_vhost_data {
 };
 
 
+int frontend_http_callback( struct lws *wsi, 
+                            enum lws_callback_reasons reason, 
+                            void *user, 
+                            void *in, 
+                            size_t len      );
 
-int frontend_callback(   struct lws *wsi, 
-                        enum lws_callback_reasons reason, 
-                        void *user, 
-                        void *in, 
-                        size_t len      );
-
+int frontend_ws_callback(   struct lws *wsi, 
+                            enum lws_callback_reasons reason, 
+                            void *user, 
+                            void *in, 
+                            size_t len      );
 
 int frontend_queuemsg(void* ws_handle, void* in, size_t len);
 
@@ -85,7 +89,7 @@ void* frontend_start(void* backend_handle,
                     struct lws_http_mount* mount
                     );
 
-int frontend_wait(void* handle, int intsignal);
+int frontend_stop(void* handle);
 
 
 

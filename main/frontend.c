@@ -58,14 +58,45 @@ static void sub_destroy_message(void *_msg) {
 
 
 
+int frontend_http_callback(  struct lws *wsi, 
+                            enum lws_callback_reasons reason, 
+                            void *user, 
+                            void *in, 
+                            size_t len) {
+/// Override the lws_callback_http_dummy() callback (default callback) for the
+/// subset of external polling handlers we need to handle uniquely.
+/// @note The "void* in" parameter will contain a struct pollfd* datatype.
+///       The "void* user" parameter will store the backend handle.
+    
+    /// @todo look into returning the value from conn_ws_...() functions
+    /// rather than just 0.
+    switch (reason) {
+        case LWS_CALLBACK_ADD_POLL_FD: 
+            conn_ws_open(user, (struct pollfd*)in);
+            return 0;
+        case LWS_CALLBACK_DEL_POLL_FD: 
+            conn_ws_close(user, (struct pollfd*)in);
+            return 0;
+        case LWS_CALLBACK_CHANGE_MODE_POLL_FD:
+            conn_ws_update(user, (struct pollfd*)in);
+            return 0;
+
+        default:
+            break;
+    }
+
+    return lws_callback_http_dummy(wsi, reason, user, in, len);
+}
+
+
 
 
 /// This does most of the work in handling the websockets
-int frontend_callback(   struct lws *wsi, 
-                        enum lws_callback_reasons reason, 
-                        void *user, 
-                        void *in, 
-                        size_t len      ) {
+int frontend_ws_callback(   struct lws *wsi, 
+                            enum lws_callback_reasons reason, 
+                            void *user, 
+                            void *in, 
+                            size_t len      ) {
             
 	struct per_session_data *pss;
 	struct per_vhost_data *vhd;
@@ -225,7 +256,22 @@ void* frontend_start(void* backend_handle,
 }
 
 
+int frontend_stop(void* handle) {
+    struct lws_context *context;
+    
+    if (handle == NULL) {
+        return -1;
+    }
+    context = handle;
+    
+    lws_context_destroy(context);
+    return 0;
+}
 
+
+
+
+// ---- Remove below ----
 
 volatile int interrupted;
 void frontend_inthandler(int sig) {
@@ -244,10 +290,12 @@ int frontend_wait(void* handle, int intsignal) {
     }
     
     /// Deinitialize
-    lws_context_destroy(context);
+    
     
     return 0;
 }
+
+
 
 
 
