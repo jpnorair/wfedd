@@ -585,7 +585,7 @@ int backend_run(socklist_t* socklist,
 
 
 
-int backend_queuemsg(void* backend_handle, void* conn_handle, void* data, size_t len) {
+int backend_putmsg(void* backend_handle, void* conn_handle, void* data, size_t len) {
     ///@note backend_handle currently unused.  Might be used in the future.
     //backend_t*  backend = backend_handle;
     conn_t*     conn    = conn_handle;
@@ -631,7 +631,6 @@ int conn_ws_open(void* backend_handle, struct pollfd* ws_pollfd) {
 }
 
 
-///@todo Used by backend_ctrl_callback() when a websocket itself is closed
 int conn_ws_close(void* backend_handle, struct pollfd* ws_pollfd) {
     backend_t* backend;
     int deletions = 0;
@@ -653,7 +652,6 @@ int conn_ws_close(void* backend_handle, struct pollfd* ws_pollfd) {
 }
 
 
-///@todo Used by backend_ctrl_callback() when a websocket itself is updated
 int conn_ws_update(void* backend_handle, struct pollfd* ws_pollfd) {
     backend_t* backend;
     struct pollfd* modpollfd;
@@ -676,7 +674,7 @@ int conn_ws_update(void* backend_handle, struct pollfd* ws_pollfd) {
 
 
 /// Used by frontend when a websocket opens a client connection
-void* conn_cli_open(void* backend_handle, void* ws_handle, const char* ws_name) {
+void* conn_ds_open(void* backend_handle, void* ws_handle, const char* ws_name) {
     backend_t*  backend = backend_handle;
     conn_t*     conn    = NULL;
     sockmap_t*  lsock;
@@ -746,7 +744,7 @@ void* conn_cli_open(void* backend_handle, void* ws_handle, const char* ws_name) 
 
 
 /// Used by frontend when a websocket closes a client connection
-void conn_cli_close(void* backend_handle, void* conn_handle) {
+void conn_ds_close(void* backend_handle, void* conn_handle) {
     backend_t*  backend = backend_handle;
     conn_t*     conn    = conn_handle;
     int         fd_client;

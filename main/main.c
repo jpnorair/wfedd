@@ -304,14 +304,15 @@ int wfedd(  const char* rsrcpath,
             socklist_t* socklist 
         ) {
         
-    void* backend_handle;
-    void* frontend_handle;
+    //void* backend_handle;
+    //void* frontend_handle;
     
     char* certpath;
     char* keypath;
     int cursor;
     int logs_mask;
     int exitcode = 0;
+    int i, j;
     
     struct lws_protocols* protocols;
     char* str_mountorigin;
@@ -319,23 +320,23 @@ int wfedd(  const char* rsrcpath,
     const char* hostname = "localhost";
     
     struct lws_http_mount mount = {
-        .mount_next         = NULL,                /* linked-list "next" */
-        .mountpoint         = urlpath,      //i.e. "/"
-        .origin             = NULL,         //"./resources/mount-origin" --> allocated later
-        .def                = "index.html",        /* default filename */
-        .protocol           = NULL,
-        .cgienv             = NULL,
-        .extra_mimetypes    = NULL,
-        .interpret          = NULL,
-        .cgi_timeout        = 0,
-        .cache_max_age      = 0,
-        .auth_mask          = 0,
-        .cache_reusable     = 0,
-        .cache_revalidate   = 0,
-        .cache_intermediaries = 0,
-        .origin_protocol    = LWSMPRO_FILE,        /* files in a dir */
-        .mountpoint_len     = strlen(urlpath),                /* char count */
-        .basic_auth_login_file = NULL,
+        .mount_next             = NULL,             // linked-list "next" 
+        .mountpoint             = urlpath,          // e.g. "/"
+        .origin                 = NULL,             // allocated later (e.g. "./resources/mount-origin")
+        .def                    = "index.html",     // default filename
+        .protocol               = NULL,
+        .cgienv                 = NULL,
+        .extra_mimetypes        = NULL,
+        .interpret              = NULL,
+        .cgi_timeout            = 0,
+        .cache_max_age          = 0,
+        .auth_mask              = 0,
+        .cache_reusable         = 0,
+        .cache_revalidate       = 0,
+        .cache_intermediaries   = 0,
+        .origin_protocol        = LWSMPRO_FILE,     // files in a dir
+        .mountpoint_len         = strlen(urlpath),  // char count
+        .basic_auth_login_file  = NULL,
     };
 
     ///1. Create the protocol list array
@@ -356,8 +357,7 @@ int wfedd(  const char* rsrcpath,
     
     // Each websocket protocol
     ///@todo some of these parameters may be changed
-    for (int i=0; i<socklist->size; i++) {
-        int j = i+1;
+    for (i=0, j=1; i<socklist->size; i++, j++) {
         protocols[j].name                   = socklist->map[i].websocket;
         protocols[j].callback               = frontend_ws_callback;
         protocols[j].per_session_data_size  = sizeof(struct per_session_data);
@@ -368,13 +368,14 @@ int wfedd(  const char* rsrcpath,
     }
     
     // Terminator
-    protocols[socklist->size+1].name                   = NULL;
-    protocols[socklist->size+1].callback               = NULL;
-    protocols[socklist->size+1].per_session_data_size  = 0;
-    protocols[socklist->size+1].rx_buffer_size         = 0;
-    protocols[socklist->size+1].id                     = 0;
-    protocols[socklist->size+1].user                   = NULL;
-    protocols[socklist->size+1].tx_packet_size         = 0;
+    bzero(&protocols[j], sizeof(struct lws_protocols));
+//    protocols[j].name                   = NULL;
+//    protocols[j].callback               = NULL;
+//    protocols[j].per_session_data_size  = 0;
+//    protocols[j].rx_buffer_size         = 0;
+//    protocols[j].id                     = 0;
+//    protocols[j].user                   = NULL;
+//    protocols[j].tx_packet_size         = 0;
     
     
     ///2. Create the http mount.  This is based largely on the defined template

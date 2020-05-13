@@ -111,7 +111,10 @@ int frontend_ws_callback(   struct lws *wsi,
 
 	switch (reason) {
 	case LWS_CALLBACK_PROTOCOL_INIT:
-		vhd = lws_protocol_vh_priv_zalloc(lws_get_vhost(wsi), lws_get_protocol(wsi), sizeof(struct per_vhost_data));
+		vhd             = lws_protocol_vh_priv_zalloc(
+                                lws_get_vhost(wsi), 
+                                lws_get_protocol(wsi), 
+                                sizeof(struct per_vhost_data));
 		vhd->context    = lws_get_context(wsi);
 		vhd->protocol   = lws_get_protocol(wsi);
 		vhd->vhost      = lws_get_vhost(wsi);
@@ -124,7 +127,7 @@ int frontend_ws_callback(   struct lws *wsi,
 		pss->last           = vhd->current;
         
         // Open a corresponding daemon client socket
-        pss->conn_handle    = backend_conn_open(lws_context_user(vhd->context), wsi, vhd->protocol->name);
+        pss->conn_handle    = conn_ds_open(lws_context_user(vhd->context), wsi, vhd->protocol->name);
         
         ///@todo some form of error handling if conn_handle returns as NULL
         //if (pss->conn_handle == NULL) {
@@ -134,14 +137,19 @@ int frontend_ws_callback(   struct lws *wsi,
 	case LWS_CALLBACK_CLOSED:
 		/// remove our closing pss from the list of live pss 
         // Kill the corresponding daemon client socket
-        backend_conn_close(lws_context_user(vhd->context), pss->conn_handle);
+        conn_ds_close(lws_context_user(vhd->context), pss->conn_handle);
         // Kill the websocket
 		lws_ll_fwd_remove(struct per_session_data, pss_list, pss, vhd->pss_list);
 		break;
 
-	case LWS_CALLBACK_SERVER_WRITEABLE:
-    /// This is the routine that actually writes to the websocket
-    ///@todo might toss-in a ring buffer here, check the lws ring buffer example.
+	case LWS_CALLBACK_SERVER_WRITEABLE: {
+        /// This is the routine that actually writes to the websocket
+        void*   backend;
+        void*   msg;
+        size_t  msglen;
+    
+        ///@todo not sure if these variables or checks are required if the 
+        ///      queue is implemented in the backend.
 		if (!vhd->amsg.payload) {
 			break;
         }
@@ -149,21 +157,44 @@ int frontend_ws_callback(   struct lws *wsi,
 			break;
         }
         
-		/// notice we allowed for LWS_PRE in the payload already 
-		m = lws_write(wsi, ((unsigned char *)vhd->amsg.payload) + LWS_PRE, vhd->amsg.len, LWS_WRITE_TEXT);
-		if (m < (int)vhd->amsg.len) {
-			lwsl_err("ERROR %d writing to ws\n", m);
-			rc = -1;
-		}
-        else {
-            pss->last = vhd->current;
+        ///@note below here is the new queue ingestion model
+        
+        backend = lws_context_user(vhd->context);
+        
+        while (backend_hasmsg(backend, pss->conn_handle)) {
+            // Re-instate this callback on the next service loop in the event that 
+            // data cannot be written to it right now.
+            if (lws_partial_buffered(wsi) || lws_send_pipe_choked(wsi)) {
+                lws_callback_on_writable(wsi);
+                //lws_callback_server_writable(wsi);
+                break;
+            }
+            
+            // Get the next message for this websocket.  Exit if no message.
+            msglen  = 0;
+            msg     = backend_getmsg(backend, pss->conn_handle, &msglen);
+            if ((msg == NULL) || (msglen == 0))  {
+                break;
+            }
+            
+            // Finally, write the message onto the websocket.
         }
-		break;
+        
+		/// notice we allowed for LWS_PRE in the payload already 
+//		m = lws_write(wsi, ((unsigned char *)vhd->amsg.payload) + LWS_PRE, vhd->amsg.len, LWS_WRITE_TEXT);
+//		if (m < (int)vhd->amsg.len) {
+//			lwsl_err("ERROR %d writing to ws\n", m);
+//			rc = -1;
+//		}
+//        else {
+//            pss->last = vhd->current;
+//        }
+    } break;
 
     ///@todo this is where data from the websocket gets forwarded to socket
     ///      The writeback part should be moved into the polling thread.
 	case LWS_CALLBACK_RECEIVE:
-        backend_queuemsg(lws_context_user(vhd->context), pss->conn_handle, in, len);
+        backend_putmsg(lws_context_user(vhd->context), pss->conn_handle, in, len);
 		break;
 
 	default:
@@ -223,7 +254,7 @@ void* frontend_start(void* backend_handle,
     //lwsl_user("LWS start msg");
 
     /// These info parameters [mostly] come from command line arguments
-    memset(&info, 0, sizeof info);
+    bzero(&info, sizeof(struct lws_context_creation_info));
     info.user       = backend_handle;
     info.port       = port_number;
     info.mounts     = mount;

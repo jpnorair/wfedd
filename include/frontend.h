@@ -35,48 +35,69 @@ typedef struct {
 
 
 /// one of these is created for each client connecting to us
+/// Basic idea: each session/client maps to a client socket for a corresponding daemon.
 struct per_session_data {
-    struct per_session_data *pss_list;
-    struct lws *wsi;
-    int last;               // the last message number we sent 
-    void* conn_handle;
+    struct per_session_data* pss_list;
+    struct lws*             wsi;
+    int                     last;               // the last message number we sent 
+    void*                   conn_handle;        // connection handle (from backend data)
 };
 
 
 
 /// one of these is created for each vhost our protocol is used with
+/// Basic idea: each vhost maps to a single daemon socket
 struct per_vhost_data {
-    struct lws_context *context;
-    struct lws_vhost *vhost;
-    const struct lws_protocols *protocol;
-
-    // linked-list of live pss
-    struct per_session_data *pss_list;
-    // the one pending message...
-    msg_t amsg;
-    // the current message number we are caching
-    int current;
-    
-    //handle to local socket connection (see backend.h / backend.c)
-    void* socket_conn;
+    struct lws_context*         context;
+    struct lws_vhost*           vhost;
+    const struct lws_protocols* protocol;
+    struct per_session_data*    pss_list;   // linked-list of live pss
+    msg_t                       amsg;       // the one pending message...
+    int                         current;    // the current message number we are caching
+    void* socket_conn;  //handle to local socket connection (backend)
 };
 
 
+/** @brief LWS service callback for http/https frontend
+ *  @retval (int)
+ *
+ *  This function gets referenced as a callback during the frontend setup. 
+ *  It will be called by libwebsockets (LWS).
+ */
 int frontend_http_callback( struct lws *wsi, 
                             enum lws_callback_reasons reason, 
                             void *user, 
                             void *in, 
                             size_t len      );
 
+
+/** @brief LWS service callback for instantiated websockets
+ *  @retval (int)
+ *
+ *  This function gets referenced as a callback during the frontend setup. 
+ *  It will be called by libwebsockets (LWS).
+ */
 int frontend_ws_callback(   struct lws *wsi, 
                             enum lws_callback_reasons reason, 
                             void *user, 
                             void *in, 
                             size_t len      );
 
+
+/** @brief Queues a message to a corresponding websocket, for output.
+ *  @retval (int)
+ *
+ *  The backend will call this function to queue data that comes from a client
+ *  client socket, onto its conjugate websocket.
+ */
 int frontend_queuemsg(void* ws_handle, void* in, size_t len);
 
 
+/** @brief Starts the frontend (libwebsockets)
+ *  @retval (int)
+ *
+ *  This function gets called by backend_run() and may, otherwise, be ignored.
+ */
 void* frontend_start(void* backend_handle,
                     int logs_mask,
                     bool do_hostcheck,
@@ -89,6 +110,12 @@ void* frontend_start(void* backend_handle,
                     struct lws_http_mount* mount
                     );
 
+
+/** @brief Stops the frontend (libwebsockets)
+ *  @retval (int)
+ *
+ *  This function gets called by backend_run() and may, otherwise, be ignored.
+ */
 int frontend_stop(void* handle);
 
 
