@@ -15,17 +15,17 @@
 */
 
 
-#include "msgq.h"
+#include "mq.h"
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
 
 
-msgq_entry_t* msg_new(size_t len) {
-    msgq_entry_t* msg = NULL;
+mq_msg_t* msg_new(size_t len) {
+    mq_msg_t* msg = NULL;
     
-    msg = malloc(sizeof(msgq_entry_t));
+    msg = malloc(sizeof(mq_msg_t));
     if (msg != NULL) {
         msg->size   = len;
         msg->data   = malloc(sizeof(len) + 0);  ///@todo maybe add LWS overhead ???
@@ -39,7 +39,7 @@ msgq_entry_t* msg_new(size_t len) {
 }
 
 
-void msg_free(msgq_entry_t* msg) {
+void msg_free(mq_msg_t* msg) {
     if (msg != NULL) {
         free(msg->data);
         free(msg);
@@ -57,8 +57,8 @@ bool mq_isempty(mq_t* mq) {
 }
 
 
-msgq_entry_t* mq_getmsg(mq_t* mq) {
-    msgq_entry_t* msg;
+mq_msg_t* mq_getmsg(mq_t* mq) {
+    mq_msg_t* msg;
     assert(mq);
     
     if (!STAILQ_EMPTY(mq)) {
@@ -73,7 +73,7 @@ msgq_entry_t* mq_getmsg(mq_t* mq) {
 }
 
 
-void mq_putmsg(mq_t* mq, msgq_entry_t* msg) {
+void mq_putmsg(mq_t* mq, mq_msg_t* msg) {
     assert(mq);
     assert(msg);
     STAILQ_INSERT_TAIL(mq, msg, entries);

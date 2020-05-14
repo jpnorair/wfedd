@@ -17,7 +17,7 @@
 #ifndef backend_h
 #define backend_h
 
-#include "msgq.h"
+#include "mq.h"
 
 // Standard C & POSIX Libraries
 #include <pthread.h>
@@ -68,7 +68,7 @@ void conn_close(void* backend_handle, void* conn_handle);
 
 
 int conn_putmsg_outbound(void* conn_handle, void* data, size_t len);
-msgq_entry_t* conn_getmsg_outbound(void* conn_handle);
+mq_msg_t* conn_getmsg_outbound(void* conn_handle);
 bool conn_hasmsg_outbound(void* conn_handle);
 
 

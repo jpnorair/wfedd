@@ -14,8 +14,8 @@
   *
   */
 
-#ifndef msgq_h
-#define msgq_h
+#ifndef mq_h
+#define mq_h
 
 // Standard C & POSIX Libraries
 #include <stdbool.h>
@@ -39,31 +39,31 @@ typedef struct {
 } socklist_t;
 
 
-struct msgq_entry {
+struct mq_msg {
     void* data;
     size_t size;
-    STAILQ_ENTRY(msgq_entry) entries;
+    STAILQ_ENTRY(mq_msg) entries;
 };
 
-typedef struct msgq_entry msgq_entry_t;
+typedef struct mq_msg mq_msg_t;
 
-typedef STAILQ_HEAD(msgq_head, msgq_entry) mq_t;
-
-
+typedef STAILQ_HEAD(mq_head, mq_msg) mq_t;
 
 
-msgq_entry_t* msg_new(size_t len);
 
-void msg_free(msgq_entry_t* msg);
+
+mq_msg_t* msg_new(size_t len);
+
+void msg_free(mq_msg_t* msg);
 
 
 void mq_init(mq_t* mq);
 
 bool mq_isempty(mq_t* mq);
 
-msgq_entry_t* mq_getmsg(mq_t* mq);
+mq_msg_t* mq_getmsg(mq_t* mq);
 
-void mq_putmsg(mq_t* mq, msgq_entry_t* msg);
+void mq_putmsg(mq_t* mq, mq_msg_t* msg);
 
 
 

@@ -139,7 +139,7 @@ int frontend_ws_callback(   struct lws *wsi,
         /// daemon socket queue until it has no more or until the websocket is
         /// too busy to do so.
         while (conn_hasmsg_outbound(pss->conn_handle)) {
-            msgq_entry_t* msg;
+            mq_msg_t* msg;
             
             // Re-instate this callback on the next service loop in the event that 
             // data cannot be written to it right now.
@@ -182,8 +182,8 @@ int frontend_ws_callback(   struct lws *wsi,
 
 
 
-msgq_entry_t* frontend_createmsg(void* in, size_t len) {
-    msgq_entry_t* msg = NULL;
+mq_msg_t* frontend_createmsg(void* in, size_t len) {
+    mq_msg_t* msg = NULL;
     
     if ((in != NULL) && (len != 0)) {
         msg = msg_new(len + LWS_PRE);

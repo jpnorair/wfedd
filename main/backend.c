@@ -103,7 +103,7 @@ typedef struct cs {
     int         fd_ds;
     sockmap_t*  sock_handle;
     void*       ws_handle;
-    mq_t        msgq;
+    mq_t        mq;
     struct sockaddr_un addr;
 } conn_t;
 
@@ -586,7 +586,7 @@ int backend_run(socklist_t* socklist,
 int conn_putmsg_outbound(void* conn_handle, void* data, size_t len) {
     ///@note backend_handle currently unused.  Might be used in the future.
     conn_t*     conn    = conn_handle;
-    msgq_entry_t* msg;
+    mq_msg_t* msg;
     
     if ((conn == NULL) || (data == NULL) || (len == 0)) {
         return -1;
@@ -597,17 +597,17 @@ int conn_putmsg_outbound(void* conn_handle, void* data, size_t len) {
         return -2;
     }
 
-    mq_putmsg(&conn->msgq, msg);
+    mq_putmsg(&conn->mq, msg);
     return 0;
 }
 
 
-msgq_entry_t* conn_getmsg_outbound(void* conn_handle) {
+mq_msg_t* conn_getmsg_outbound(void* conn_handle) {
     conn_t* conn = conn_handle;
-    msgq_entry_t* msg = NULL;
+    mq_msg_t* msg = NULL;
     
     if (conn != NULL) {
-        msg = mq_getmsg(&conn->msgq);
+        msg = mq_getmsg(&conn->mq);
     }
     
     return msg;
@@ -619,7 +619,7 @@ bool conn_hasmsg_outbound(void* conn_handle) {
     bool result = false;
     
     if (conn != NULL) {
-        result = !mq_isempty(&conn->msgq);
+        result = !mq_isempty(&conn->mq);
     }
     return result;
 }
@@ -767,7 +767,7 @@ void* conn_open(void* backend_handle, void* ws_handle, const char* ws_name) {
     conn->ws_handle         = ws_handle;
     conn->addr.sun_family   = AF_UNIX;
     snprintf(conn->addr.sun_path, UNIX_PATH_MAX, "%s", lsock->l_socket);
-    mq_init(&conn->msgq);
+    mq_init(&conn->mq);
     
     // Open a connection to the client socket
     if (connect(conn->fd_ds, (struct sockaddr *)&conn->addr, sizeof(struct sockaddr_un)) < 0) {

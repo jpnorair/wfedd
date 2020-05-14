@@ -17,7 +17,7 @@
 #ifndef frontend_h
 #define frontend_h
 
-#include "msgq.h"
+#include "mq.h"
 
 // Libwebsockets
 #include <libwebsockets.h>
@@ -95,12 +95,12 @@ int frontend_ws_callback(   struct lws *wsi,
 //int frontend_queuemsg(void* ws_handle, void* in, size_t len);
 
 
-/** @brief Creates a message applicable to a msgq, suitable for websocket
- *  @retval (msgq_entry_t*)
+/** @brief Creates a message applicable to a mq, suitable for websocket
+ *  @retval (mq_msg_t*)
  *
- *  The client is responsible for adding the msg to a msgq, and for freeing.
+ *  The client is responsible for adding the msg to a mq, and for freeing.
  */
-msgq_entry_t* frontend_createmsg(void* in, size_t len);
+mq_msg_t* frontend_createmsg(void* in, size_t len);
 
 
 /** @brief instructs the supplied websocket that there is a writable message
