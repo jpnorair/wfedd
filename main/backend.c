@@ -37,6 +37,7 @@
 #include <string.h>
 #include <unistd.h>
 
+
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -81,7 +82,7 @@ typedef struct {
 typedef struct {
     struct lws_context* ws_context;
     socklist_t*         socklist;
-    void*               conndict;
+    void*               filedict;
     struct pollfd*      fds;
     fdsparam_t          fdsparam;
     size_t              bufsize;
@@ -92,14 +93,17 @@ typedef struct {
 
 
 
+
 /// ----- Connection Dictionary ---------
 /// This is a connection to a backend client socket from a frontend websocket.
 /// Daemons are expected to be able to handle multiple client connections.
 /// Connections are stored in a hash table.
+
 typedef struct cs {
-    int         fd_client;
+    int         fd_ds;
     sockmap_t*  sock_handle;
     void*       ws_handle;
+    mq_t        msgq;
     struct sockaddr_un addr;
 } conn_t;
 
@@ -260,7 +264,6 @@ void* dict_get(void* handle, int id, dict_itemtype type) {
     return NULL;
 }
 
-
 /// --------------------------------------
 
 
@@ -296,18 +299,18 @@ sockmap_t* sub_socklist_search(socklist_t* socklist, const char* ws_name) {
 
 
 void sub_remap_innerloop(backend_t* backend) {
-/// Remap the pollfds array based on a revised conndict
+/// Remap the pollfds array based on a revised filedict
     struct itemstruct*  dict_item;
     int i = 0;
     
-    // Start at the front of the conndict linked-list
-    dict_item = ((dict_t*)backend->conndict)->base;
+    // Start at the front of the filedict linked-list
+    dict_item = ((dict_t*)backend->filedict)->base;
     
     // Move through the list until reaching a NULL item (the end of it).
-    // load the updated conndict information into the backend fds array
+    // load the updated filedict information into the backend fds array
     while (dict_item != NULL) {
         if (dict_item->type == ITEM_CONN) {
-            backend->fds[i].fd      = ((conn_t*)dict_item->data)->fd_client;
+            backend->fds[i].fd      = ((conn_t*)dict_item->data)->fd_ds;
             backend->fds[i].events  = (POLLIN | POLLNVAL | POLLHUP);
         }
         else {
@@ -331,7 +334,7 @@ int sub_remap_withadd(backend_t* backend) {
 
     // Reallocate the fds if that is necessary
     // Allocation is done in chunks of size = backend->fdsparam.group
-    ///@note sub_remap_innerloop() will reload the conndict information into
+    ///@note sub_remap_innerloop() will reload the filedict information into
     ///      backend->fds
     if (backend->fdsparam.total <= backend->fdsparam.active) {
         struct pollfd*  fds;
@@ -438,11 +441,11 @@ void* poll_unix(void* args) {
             
             // Conn object contains the link to the websocket frontend.
             // Forward the data on this client socket to the websocket.
-            conn = (conn_t*)dict_get(backend->conndict, backend->fds[i].fd, ITEM_CONN);
+            conn = (conn_t*)dict_get(backend->filedict, backend->fds[i].fd, ITEM_CONN);
             if (conn != NULL) {
                 bytes_in = read(backend->fds[i].fd, readbuf, backend->bufsize);
-                if (bytes_in > 0) {
-                    frontend_queuemsg(conn->ws_handle, readbuf, bytes_in);
+                if (frontend_createmsg(readbuf, bytes_in) != NULL) {
+                    frontend_pendmsg(conn->ws_handle);
                 }
             }
         }
@@ -453,7 +456,7 @@ void* poll_unix(void* args) {
         else if (backend->fds[i].revents != 0) {
             ///@todo drop the corresponding websocket and propagate some error to the client
             close(backend->fds[i].fd);
-            dict_del(backend->conndict, backend->fds[i].fd);
+            dict_del(backend->filedict, backend->fds[i].fd);
             sub_remap_withdel(backend);
             goto poll_unix_MAIN;
         }
@@ -474,7 +477,7 @@ void backend_inthandler(int sig) {
 
 
 
-///@todo for single threaded mode, change to backend_run
+
 int backend_run(socklist_t* socklist, 
                 int intsignal,
                 int logs_mask,
@@ -496,9 +499,9 @@ int backend_run(socklist_t* socklist,
     // Things that must be initialized externally
     backend.socklist = socklist;
     
-    // initialize conndict
-    backend.conndict = dict_init();
-    if (backend.conndict == NULL) {
+    // initialize filedict
+    backend.filedict = dict_init();
+    if (backend.filedict == NULL) {
         rc = -1;
         goto backend_run_EXIT;
     }
@@ -552,11 +555,11 @@ int backend_run(socklist_t* socklist,
     
     {   struct itemstruct*  dict_item;
 
-        // Start at the front of the conndict linked-list
-        dict_item = ((dict_t*)backend.conndict)->base;
+        // Start at the front of the filedict linked-list
+        dict_item = ((dict_t*)backend.filedict)->base;
         while (dict_item != NULL) {
             if (dict_item->type == ITEM_CONN) {
-                close( ((conn_t*)dict_item->data)->fd_client );
+                close( ((conn_t*)dict_item->data)->fd_ds );
             }
             ///@note not sure if we actually need to close these, or if lws does it for us.
             else if (dict_item->type == ITEM_WSPOLLFD) {
@@ -570,7 +573,7 @@ int backend_run(socklist_t* socklist,
     switch (rc) {
         default:    
         case -3:    free(backend.fds);
-        case -2:    dict_deinit(backend.conndict);
+        case -2:    dict_deinit(backend.filedict);
         case -1:    break;
     }
     return rc;
@@ -580,22 +583,62 @@ int backend_run(socklist_t* socklist,
 
 
 
-
-
-
-
-
-int backend_putmsg(void* backend_handle, void* conn_handle, void* data, size_t len) {
+int conn_putmsg_outbound(void* conn_handle, void* data, size_t len) {
     ///@note backend_handle currently unused.  Might be used in the future.
-    //backend_t*  backend = backend_handle;
     conn_t*     conn    = conn_handle;
-    int         rc;
+    msgq_entry_t* msg;
     
-    if ((backend_handle == NULL) || (conn == NULL) || (data == NULL) || (len == 0)) {
+    if ((conn == NULL) || (data == NULL) || (len == 0)) {
+        return -1;
+    }
+
+    msg = frontend_createmsg(data, len);
+    if (msg == NULL) {
+        return -2;
+    }
+
+    mq_putmsg(&conn->msgq, msg);
+    return 0;
+}
+
+
+msgq_entry_t* conn_getmsg_outbound(void* conn_handle) {
+    conn_t* conn = conn_handle;
+    msgq_entry_t* msg = NULL;
+    
+    if (conn != NULL) {
+        msg = mq_getmsg(&conn->msgq);
+    }
+    
+    return msg;
+}
+
+
+bool conn_hasmsg_outbound(void* conn_handle) {
+    conn_t* conn = conn_handle;
+    bool result = false;
+    
+    if (conn != NULL) {
+        result = !mq_isempty(&conn->msgq);
+    }
+    return result;
+}
+
+
+int conn_putmsg_inbound(void* conn_handle, void* data, size_t len) {
+/// Unlinke conn_ds_putmsg(), the ws conjugate just dumps information onto the
+/// Daemon socket via write.  The daemon socket is a client socket used only
+/// by the conjugate websocket, and it is served by a separate process, so 
+/// we don't need a queue like we need for data going to the websocket.
+    conn_t* conn = conn_handle;
+    int     rc;
+    
+    ///@todo get rid of backend_handle as long as this can be made universal across msg API
+    if ((conn == NULL) || (data == NULL) || (len == 0)) {
         return -1;
     }
     
-    rc = (int)write(conn->fd_client, data, len);
+    rc = (int)write(conn->fd_ds, data, len);
     
     return rc;
 }
@@ -604,8 +647,8 @@ int backend_putmsg(void* backend_handle, void* conn_handle, void* data, size_t l
 
 
 
-///@todo Used by backend_ctrl_callback() when a websocket itself is opened
-int conn_ws_open(void* backend_handle, struct pollfd* ws_pollfd) {
+
+int pollfd_open(void* backend_handle, struct pollfd* ws_pollfd) {
     backend_t* backend;
     struct pollfd* newpollfd;
     int err = 0;
@@ -616,11 +659,11 @@ int conn_ws_open(void* backend_handle, struct pollfd* ws_pollfd) {
     backend = backend_handle;
     
     // Create a new ws pollfd entry based on the new client socket
-    newpollfd = (struct pollfd*)dict_new(&err, backend->conndict, ws_pollfd->fd, ITEM_WSPOLLFD);
+    newpollfd = (struct pollfd*)dict_new(&err, backend->filedict, ws_pollfd->fd, ITEM_WSPOLLFD);
     if (err != 0) {
         if (newpollfd != NULL) {
-            // this fd already exists in the conndict.  That's a problem that needs to be debugged
-            printf("fd collision in conndict (fd = %i)\n", ws_pollfd->fd);
+            // this fd already exists in the filedict.  That's a problem that needs to be debugged
+            printf("fd collision in filedict (fd = %i)\n", ws_pollfd->fd);
         }
     }
     else {
@@ -631,7 +674,8 @@ int conn_ws_open(void* backend_handle, struct pollfd* ws_pollfd) {
 }
 
 
-int conn_ws_close(void* backend_handle, struct pollfd* ws_pollfd) {
+
+int pollfd_close(void* backend_handle, struct pollfd* ws_pollfd) {
     backend_t* backend;
     int deletions = 0;
     
@@ -641,18 +685,19 @@ int conn_ws_close(void* backend_handle, struct pollfd* ws_pollfd) {
     backend = backend_handle;
     
     // Delete a ws pollfd entry
-    deletions = dict_del(backend->conndict, ws_pollfd->fd);
+    deletions = dict_del(backend->filedict, ws_pollfd->fd);
     switch (deletions) {
-        case 0: printf("fd marked for delete not found in conndict (fd = %i)\n", ws_pollfd->fd);
+        case 0: printf("fd marked for delete not found in filedict (fd = %i)\n", ws_pollfd->fd);
                 return -2;
         case 1: return 0;
-       default: printf("fd marked for delete not unique in conndict (fd = %i)\n", ws_pollfd->fd);
+       default: printf("fd marked for delete not unique in filedict (fd = %i)\n", ws_pollfd->fd);
                 return deletions;
     }
 }
 
 
-int conn_ws_update(void* backend_handle, struct pollfd* ws_pollfd) {
+
+int pollfd_update(void* backend_handle, struct pollfd* ws_pollfd) {
     backend_t* backend;
     struct pollfd* modpollfd;
     
@@ -662,9 +707,9 @@ int conn_ws_update(void* backend_handle, struct pollfd* ws_pollfd) {
     backend = backend_handle;
     
     // Create a new ws pollfd entry based on the new client socket
-    modpollfd = (struct pollfd*)dict_get(backend->conndict, ws_pollfd->fd, ITEM_WSPOLLFD);
+    modpollfd = (struct pollfd*)dict_get(backend->filedict, ws_pollfd->fd, ITEM_WSPOLLFD);
     if (modpollfd == NULL) {
-        printf("fd not found in conndict (fd = %i)\n", ws_pollfd->fd);
+        printf("fd not found in filedict (fd = %i)\n", ws_pollfd->fd);
         return -1;
     }
 
@@ -673,14 +718,15 @@ int conn_ws_update(void* backend_handle, struct pollfd* ws_pollfd) {
 }
 
 
+
+void* conn_open(void* backend_handle, void* ws_handle, const char* ws_name) {
 /// Used by frontend when a websocket opens a client connection
-void* conn_ds_open(void* backend_handle, void* ws_handle, const char* ws_name) {
     backend_t*  backend = backend_handle;
     conn_t*     conn    = NULL;
     sockmap_t*  lsock;
     struct stat statdata;
     int err;
-    int fd_client;
+    int fd_ds;
     
     if ((backend_handle == NULL) || (ws_handle == NULL) || (ws_name == NULL)) {
         return NULL;
@@ -701,28 +747,30 @@ void* conn_ds_open(void* backend_handle, void* ws_handle, const char* ws_name) {
     }
     
     // Create a client socket
-    fd_client = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd_client < 0) {
+    fd_ds = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd_ds < 0) {
         goto backend_conn_open_TERM1;
     }
     
     // Create a new connection entry based on the new client socket
-    conn = (conn_t*)dict_new(&err, backend->conndict, fd_client, ITEM_CONN);
+    conn = (conn_t*)dict_new(&err, backend->filedict, fd_ds, ITEM_CONN);
     if (err != 0) {
         if (conn != NULL) {
-            // this fd already exists in the conndict.  That's a problem that needs to be debugged
-            printf("fd collision in conndict (fd = %i)\n", fd_client);
+            // this fd already exists in the filedict.  That's a problem that needs to be debugged
+            printf("fd collision in filedict (fd = %i)\n", fd_ds);
         }
         goto backend_conn_open_TERM2;
     }
-    conn->fd_client         = fd_client;
+    
+    conn->fd_ds             = fd_ds;
     conn->sock_handle       = lsock;
     conn->ws_handle         = ws_handle;
     conn->addr.sun_family   = AF_UNIX;
     snprintf(conn->addr.sun_path, UNIX_PATH_MAX, "%s", lsock->l_socket);
+    mq_init(&conn->msgq);
     
     // Open a connection to the client socket
-    if (connect(conn->fd_client, (struct sockaddr *)&conn->addr, sizeof(struct sockaddr_un)) < 0) {
+    if (connect(conn->fd_ds, (struct sockaddr *)&conn->addr, sizeof(struct sockaddr_un)) < 0) {
         goto backend_conn_open_TERM3;
     }
     
@@ -734,31 +782,32 @@ void* conn_ds_open(void* backend_handle, void* ws_handle, const char* ws_name) {
     return conn;
     
     backend_conn_open_TERM3:
-    dict_del(backend->conndict, fd_client);
+    dict_del(backend->filedict, fd_ds);
     backend_conn_open_TERM2:
-    close(fd_client);
+    close(fd_ds);
     backend_conn_open_TERM1:
     return NULL;
     
 }
 
 
+
+void conn_close(void* backend_handle, void* conn_handle) {
 /// Used by frontend when a websocket closes a client connection
-void conn_ds_close(void* backend_handle, void* conn_handle) {
     backend_t*  backend = backend_handle;
     conn_t*     conn    = conn_handle;
-    int         fd_client;
+    int         fd_ds;
 
     if ((backend_handle == NULL) || (conn_handle == NULL)) {
         return;
     }
     
     // Close this connection
-    fd_client = conn->fd_client;
-    close(fd_client);
+    fd_ds = conn->fd_ds;
+    close(fd_ds);
     
     // Remap the poll array without the removed connection
-    dict_del(backend->conndict, fd_client);
+    dict_del(backend->filedict, fd_ds);
     sub_remap_withdel(backend);
 }
 

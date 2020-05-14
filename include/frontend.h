@@ -17,6 +17,8 @@
 #ifndef frontend_h
 #define frontend_h
 
+#include "msgq.h"
+
 // Libwebsockets
 #include <libwebsockets.h>
 
@@ -28,10 +30,10 @@
 
 
 /// one of these created for each message 
-typedef struct {
-    void *payload; // is malloc'd 
-    size_t len;
-} msg_t;
+//typedef struct {
+//    void *payload; // is malloc'd 
+//    size_t len;
+//} msg_t;
 
 
 /// one of these is created for each client connecting to us
@@ -39,7 +41,7 @@ typedef struct {
 struct per_session_data {
     struct per_session_data* pss_list;
     struct lws*             wsi;
-    int                     last;               // the last message number we sent 
+    //int                     last;               // the last message number we sent 
     void*                   conn_handle;        // connection handle (from backend data)
 };
 
@@ -52,8 +54,8 @@ struct per_vhost_data {
     struct lws_vhost*           vhost;
     const struct lws_protocols* protocol;
     struct per_session_data*    pss_list;   // linked-list of live pss
-    msg_t                       amsg;       // the one pending message...
-    int                         current;    // the current message number we are caching
+    //msg_t                       amsg;       // the one pending message...
+    //int                         current;    // the current message number we are caching
     void* socket_conn;  //handle to local socket connection (backend)
 };
 
@@ -90,7 +92,23 @@ int frontend_ws_callback(   struct lws *wsi,
  *  The backend will call this function to queue data that comes from a client
  *  client socket, onto its conjugate websocket.
  */
-int frontend_queuemsg(void* ws_handle, void* in, size_t len);
+//int frontend_queuemsg(void* ws_handle, void* in, size_t len);
+
+
+/** @brief Creates a message applicable to a msgq, suitable for websocket
+ *  @retval (msgq_entry_t*)
+ *
+ *  The client is responsible for adding the msg to a msgq, and for freeing.
+ */
+msgq_entry_t* frontend_createmsg(void* in, size_t len);
+
+
+/** @brief instructs the supplied websocket that there is a writable message
+ *  @retval none
+ *
+ */
+void frontend_pendmsg(void* ws_handle);
+
 
 
 /** @brief Starts the frontend (libwebsockets)

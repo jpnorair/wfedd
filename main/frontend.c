@@ -47,15 +47,6 @@ static const lws_retry_bo_t retry = {
 #endif
 
 
-/// destroys the message when everyone has had a copy of it
-static void sub_destroy_message(void *_msg) {
-	msg_t *msg = _msg;
-
-	free(msg->payload);
-	msg->payload = NULL;
-	msg->len = 0;
-}
-
 
 
 int frontend_http_callback(  struct lws *wsi, 
@@ -72,13 +63,13 @@ int frontend_http_callback(  struct lws *wsi,
     /// rather than just 0.
     switch (reason) {
         case LWS_CALLBACK_ADD_POLL_FD: 
-            conn_ws_open(user, (struct pollfd*)in);
+            pollfd_open(user, (struct pollfd*)in);
             return 0;
         case LWS_CALLBACK_DEL_POLL_FD: 
-            conn_ws_close(user, (struct pollfd*)in);
+            pollfd_close(user, (struct pollfd*)in);
             return 0;
         case LWS_CALLBACK_CHANGE_MODE_POLL_FD:
-            conn_ws_update(user, (struct pollfd*)in);
+            pollfd_update(user, (struct pollfd*)in);
             return 0;
 
         default:
@@ -123,11 +114,10 @@ int frontend_ws_callback(   struct lws *wsi,
 	case LWS_CALLBACK_ESTABLISHED:
 		/// add ourselves to the list of live pss held in the vhd 
 		lws_ll_fwd_insert(pss, pss_list, vhd->pss_list);
-		pss->wsi            = wsi;
-		pss->last           = vhd->current;
+		pss->wsi = wsi;
         
         // Open a corresponding daemon client socket
-        pss->conn_handle    = conn_ds_open(lws_context_user(vhd->context), wsi, vhd->protocol->name);
+        pss->conn_handle = conn_open(lws_context_user(vhd->context), wsi, vhd->protocol->name);
         
         ///@todo some form of error handling if conn_handle returns as NULL
         //if (pss->conn_handle == NULL) {
@@ -137,64 +127,49 @@ int frontend_ws_callback(   struct lws *wsi,
 	case LWS_CALLBACK_CLOSED:
 		/// remove our closing pss from the list of live pss 
         // Kill the corresponding daemon client socket
-        conn_ds_close(lws_context_user(vhd->context), pss->conn_handle);
+        conn_close(lws_context_user(vhd->context), pss->conn_handle);
         // Kill the websocket
 		lws_ll_fwd_remove(struct per_session_data, pss_list, pss, vhd->pss_list);
 		break;
 
-	case LWS_CALLBACK_SERVER_WRITEABLE: {
-        /// This is the routine that actually writes to the websocket
-        void*   backend;
-        void*   msg;
-        size_t  msglen;
-    
-        ///@todo not sure if these variables or checks are required if the 
-        ///      queue is implemented in the backend.
-		if (!vhd->amsg.payload) {
-			break;
-        }
-		if (pss->last == vhd->current) {
-			break;
-        }
-        
-        ///@note below here is the new queue ingestion model
-        
-        backend = lws_context_user(vhd->context);
-        
-        while (backend_hasmsg(backend, pss->conn_handle)) {
+	case LWS_CALLBACK_SERVER_WRITEABLE: 
+        /// This is the routine that actually writes to the websocket.
+        /// This loop inspects the msg queue of the daemon socket (ds) that is
+        /// associated with this websocket.  It will consume messages from the
+        /// daemon socket queue until it has no more or until the websocket is
+        /// too busy to do so.
+        while (conn_hasmsg_outbound(pss->conn_handle)) {
+            msgq_entry_t* msg;
+            
             // Re-instate this callback on the next service loop in the event that 
             // data cannot be written to it right now.
             if (lws_partial_buffered(wsi) || lws_send_pipe_choked(wsi)) {
                 lws_callback_on_writable(wsi);
-                //lws_callback_server_writable(wsi);
                 break;
             }
             
             // Get the next message for this websocket.  Exit if no message.
-            msglen  = 0;
-            msg     = backend_getmsg(backend, pss->conn_handle, &msglen);
-            if ((msg == NULL) || (msglen == 0))  {
+            msg = conn_getmsg_outbound(pss->conn_handle);
+            if (msg == NULL)  {
                 break;
             }
             
             // Finally, write the message onto the websocket.
+            ///@note We allowed for LWS_PRE in the payload via 
+            m = lws_write(wsi, msg->data + LWS_PRE, msg->size, LWS_WRITE_TEXT);
+            if (m < msg->size) {
+                lwsl_err("ERROR %d writing to ws\n", m);
+                rc = -1;
+            }
+            
+            msg_free(msg);
         }
-        
-		/// notice we allowed for LWS_PRE in the payload already 
-//		m = lws_write(wsi, ((unsigned char *)vhd->amsg.payload) + LWS_PRE, vhd->amsg.len, LWS_WRITE_TEXT);
-//		if (m < (int)vhd->amsg.len) {
-//			lwsl_err("ERROR %d writing to ws\n", m);
-//			rc = -1;
-//		}
-//        else {
-//            pss->last = vhd->current;
-//        }
-    } break;
+        break;
 
-    ///@todo this is where data from the websocket gets forwarded to socket
-    ///      The writeback part should be moved into the polling thread.
+    /// Put the message received from the the websocket onto its queue.
+    /// This message will be written to corresponding daemon socket (ds).
 	case LWS_CALLBACK_RECEIVE:
-        backend_putmsg(lws_context_user(vhd->context), pss->conn_handle, in, len);
+        conn_putmsg_inbound(pss->conn_handle, in, len);
 		break;
 
 	default:
@@ -206,32 +181,31 @@ int frontend_ws_callback(   struct lws *wsi,
 
 
 
-int frontend_queuemsg(void* ws_handle, void* in, size_t len) {
-    struct lws* wsi = ws_handle;
-    struct per_vhost_data* vhd;
 
-    vhd = (struct per_vhost_data *)lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
+msgq_entry_t* frontend_createmsg(void* in, size_t len) {
+    msgq_entry_t* msg = NULL;
     
-    /// amsg should be empty.  If it's not, we're looking at the previous message
-    if (vhd->amsg.payload) {
-        sub_destroy_message(&vhd->amsg);
+    if ((in != NULL) && (len != 0)) {
+        msg = msg_new(len + LWS_PRE);
+        if (msg != NULL) {
+            memcpy((char*)msg->data + LWS_PRE, in, len);
+        }
+        else {
+            ///@todo handle some error
+        }
     }
-    vhd->amsg.len = len;
     
-    /// notice we over-allocate by LWS_PRE 
-    vhd->amsg.payload = malloc(LWS_PRE + len);
-    if (!vhd->amsg.payload) {
-        lwsl_user("Out of Memory: dropping\n");
-        len = 0;
-    }
-    else {
-        memcpy((char *)vhd->amsg.payload + LWS_PRE, in, len);
-        vhd->current++;
+    return msg;
+}
+
+void frontend_pendmsg(void* ws_handle) {
+    struct lws* wsi = ws_handle;
+    
+    if (wsi != NULL) {
         lws_callback_on_writable(wsi);
     }
-
-    return (int)len;
 }
+
 
 
 

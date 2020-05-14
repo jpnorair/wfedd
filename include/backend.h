@@ -17,6 +17,8 @@
 #ifndef backend_h
 #define backend_h
 
+#include "msgq.h"
+
 // Standard C & POSIX Libraries
 #include <pthread.h>
 #include <stdbool.h>
@@ -40,6 +42,9 @@ typedef struct {
 } socklist_t;
 
 
+
+
+
 int backend_run(socklist_t* socklist,
                 int intsignal,
                 int logs_mask,
@@ -54,17 +59,22 @@ int backend_run(socklist_t* socklist,
                 );
 
 
-int backend_putmsg(void* backend_handle, void* conn_handle, void* data, size_t len);
-void* backend_getmsg(void* backend_handle, void* conn_handle, size_t* len);
-bool backend_hasmsg(void* backend_handle, void* conn_handle);
+int pollfd_open(void* backend_handle, struct pollfd* ws_pollfd);
+int pollfd_close(void* backend_handle, struct pollfd* ws_pollfd);
+int pollfd_update(void* backend_handle, struct pollfd* ws_pollfd);
 
-void* conn_ds_open(void* backend_handle, void* ws_handle, const char* ws_name);
-void conn_ds_close(void* backend_handle, void* conn_handle);
+void* conn_open(void* backend_handle, void* ws_handle, const char* ws_name);
+void conn_close(void* backend_handle, void* conn_handle);
 
-int conn_ws_open(void* backend_handle, struct pollfd* ws_pollfd);
-int conn_ws_close(void* backend_handle, struct pollfd* ws_pollfd);
-int conn_ws_update(void* backend_handle, struct pollfd* ws_pollfd);
 
+int conn_putmsg_outbound(void* conn_handle, void* data, size_t len);
+msgq_entry_t* conn_getmsg_outbound(void* conn_handle);
+bool conn_hasmsg_outbound(void* conn_handle);
+
+
+int conn_putmsg_inbound(void* conn_handle, void* data, size_t len);
+void* conn_getmsg_inbound(void* conn_handle, size_t* len);
+bool conn_hasmsg_inbound(void* conn_handle);
 
 
 
