@@ -4,16 +4,21 @@
   <script src="/example.js"></script>
  </head>
 	<body>
-		<img src="libwebsockets.org-logo.svg">
-		<img src="strict-csp.svg"><br>
-	
-		LWS chat <b>minimal ws server example</b>.<br>
-		Chat is sent to all browsers open on this page.
-		<br>
-		<br>
-		<textarea id=r readonly cols=40 rows=10></textarea><br>
-		<input type="text" id=m cols=40 rows=1>
-		<button id=b>Send</button>
+		<b>WFEDD Websocket Bridge Test</b><br>
+		Send a request over a websocket to a daemon hosting a local socket on the webserver, 
+		and get a response from said daemon bridged-back over the websocket.
+		<br><br>
+		
+		Websocket Path:<br>
+		<input type="text" id="path" cols=40 rows=1><br><br>
+		
+		Request:<br>
+		<input type="text" id="req" cols=80 rows=1><br>
+		<button id="send">Send</button><br><br>
+		
+		Response:<br>
+		<textarea id="resp" readonly cols=40 rows=10></textarea><br>
+		
 	</body>
 </html>
 

@@ -32,23 +32,25 @@ function new_ws(urlpath, protocol)
 
 document.addEventListener("DOMContentLoaded", function() {
 	
-	var ws = new_ws(get_appropriate_ws_url(""), "lws-minimal");
+	var ws = new_ws(get_appropriate_ws_url(""), "otdb");
 	try {
 		ws.onopen = function() {
-			document.getElementById("m").disabled = 0;
-			document.getElementById("b").disabled = 0;
+		    document.getElementById("path").disabled = 0;
+			document.getElementById("req").disabled = 0;
+			document.getElementById("send").disabled = 0;
 		};
 	
 		ws.onmessage =function got_packet(msg) {
-			document.getElementById("r").value =
-				document.getElementById("r").value + msg.data + "\n";
-			document.getElementById("r").scrollTop =
-				document.getElementById("r").scrollHeight;
+			document.getElementById("resp").value =
+				document.getElementById("resp").value + msg.data + "\n";
+			document.getElementById("resp").scrollTop =
+				document.getElementById("resp").scrollHeight;
 		};
 	
 		ws.onclose = function(){
-			document.getElementById("m").disabled = 1;
-			document.getElementById("b").disabled = 1;
+		    document.getElementById("path").disabled = 1;
+			document.getElementById("req").disabled = 1;
+			document.getElementById("send").disabled = 1;
 		};
 	} catch(exception) {
 		alert("<p>Error " + exception);  
@@ -56,11 +58,11 @@ document.addEventListener("DOMContentLoaded", function() {
 	
 	function sendmsg()
 	{
-		ws.send(document.getElementById("m").value);
-		document.getElementById("m").value = "";
+		ws.send(document.getElementById("req").value);
+		document.getElementById("req").value = "";
 	}
 	
-	document.getElementById("b").addEventListener("click", sendmsg);
+	document.getElementById("send").addEventListener("click", sendmsg);
 	
 }, false);
 

@@ -281,39 +281,12 @@ void* dict_get(void* handle, int id, dict_filetype type) {
 
 
 
-
-/// Search through the socklist to find the socket corresponding to supplied
-/// websocket.  ws_name refers to the "protocol name", from libwebsockets.
-/// Each "protocol name" must be bridged 1:1 to a corresponding daemon.
-///
-/// Called only when opening a new websocket (i.e. client connection)
-///
-/// Currently, the search is a linear search, because wfedd is not expected to
-/// be used with very many daemons.  If that changes, we can change this easily
-/// to a binary search, because the websocket:daemon bridging never changes
-/// during runtime.
-sockmap_t* sub_socklist_search(socklist_t* socklist, const char* ws_name) {
-    int i;
-    
-    if ((socklist == NULL) || (ws_name == NULL)) {
-        return NULL;
-    }
-    
-    for (i=0; i<socklist->size; i++) {
-        if (strcmp(socklist->map[i].websocket, ws_name) == 0) {
-            return &socklist->map[i];
-        }
-    }
-
-    return NULL;
-}
-
-
 void sub_remap_innerloop(backend_t* backend) {
 /// Remap the pollfds array based on a revised filedict
     struct itemstruct*  dict_item;
     int i = 0;
     
+printf("%s %i\n", __FUNCTION__, __LINE__);
     // Start at the front of the filedict linked-list
     dict_item = ((dict_t*)backend->filedict)->base;
     
@@ -612,7 +585,7 @@ int conn_putmsg_outbound(void* conn_handle, void* data, size_t len) {
     ///@note backend_handle currently unused.  Might be used in the future.
     conn_t* conn = conn_handle;
     mq_msg_t* msg;
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     if ((conn == NULL) || (data == NULL) || (len == 0)) {
         return -1;
     }
@@ -630,7 +603,7 @@ int conn_putmsg_outbound(void* conn_handle, void* data, size_t len) {
 mq_msg_t* conn_getmsg_outbound(void* conn_handle) {
     conn_t* conn = conn_handle;
     mq_msg_t* msg = NULL;
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     if (conn != NULL) {
         msg = mq_getmsg(&conn->mq);
     }
@@ -642,7 +615,7 @@ mq_msg_t* conn_getmsg_outbound(void* conn_handle) {
 bool conn_hasmsg_outbound(void* conn_handle) {
     conn_t* conn = conn_handle;
     bool result = false;
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     if (conn != NULL) {
         result = !mq_isempty(&conn->mq);
     }
@@ -657,7 +630,7 @@ int conn_putmsg_inbound(void* conn_handle, void* data, size_t len) {
 /// we don't need a queue like we need for data going to the websocket.
     conn_t* conn = conn_handle;
     int     rc;
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     ///@todo get rid of backend_handle as long as this can be made universal across msg API
     if ((conn == NULL) || (data == NULL) || (len == 0)) {
         return -1;
@@ -677,7 +650,7 @@ int pollfd_open(void* backend_handle, struct pollfd* ws_pollfd) {
     backend_t* backend;
     struct pollfd* newpollfd;
     int err = 0;
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     if ((backend_handle == NULL) || (ws_pollfd == NULL)) {
         return -1;
     }
@@ -703,7 +676,7 @@ int pollfd_open(void* backend_handle, struct pollfd* ws_pollfd) {
 int pollfd_close(void* backend_handle, struct pollfd* ws_pollfd) {
     backend_t* backend;
     int deletions = 0;
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     if ((backend_handle == NULL) || (ws_pollfd == NULL)) {
         return -1;
     }
@@ -725,7 +698,7 @@ int pollfd_close(void* backend_handle, struct pollfd* ws_pollfd) {
 int pollfd_update(void* backend_handle, struct pollfd* ws_pollfd) {
     backend_t* backend;
     struct pollfd* modpollfd;
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     if ((backend_handle == NULL) || (ws_pollfd == NULL)) {
         return -1;
     }
@@ -752,13 +725,13 @@ void* conn_open(void* backend_handle, void* ws_handle, const char* ws_name) {
     struct stat statdata;
     int err;
     int fd_ds;
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     if ((backend_handle == NULL) || (ws_handle == NULL) || (ws_name == NULL)) {
         return NULL;
     }
     
     // make sure the socket is in the list
-    lsock = sub_socklist_search(backend->socklist, ws_name);
+    lsock = socklist_search(backend->socklist, ws_name);
     if (lsock == NULL) {
         goto backend_conn_open_EXIT;
     }
@@ -822,7 +795,7 @@ void conn_close(void* backend_handle, void* conn_handle) {
     backend_t*  backend = backend_handle;
     conn_t*     conn    = conn_handle;
     int         fd_ds;
-
+printf("%s %i\n", __FUNCTION__, __LINE__);
     if ((backend_handle == NULL) || (conn_handle == NULL)) {
         return;
     }

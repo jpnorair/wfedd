@@ -36,6 +36,7 @@
 #include "cliopt.h"
 #include "frontend.h"
 #include "backend.h"
+#include "socklist.h"
 #include "debug.h"
 
 
@@ -101,11 +102,8 @@ int main(int argc, char* argv[]) {
     char* urlpath_val   = NULL;
     int port_val        = 7681;
     bool tls_val        = false;
-    
-    socklist_t socklist = {
-        .size = 0,
-        .map = NULL,
-    };
+
+    socklist_t* socklist= NULL;
 
     if (arg_nullcheck(argtable) != 0) {
         /// NULL entries were detected, some allocations must have failed 
@@ -205,68 +203,19 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    /// Handle Socket arguments
+    /// Handle Socket arguments & Construct the socklist
     if (socket->count <= 0) {
         printf("Input must contain socket specification argument.\n");
         exitcode = 1;
         goto main_FINISH;
     }
 
-    socklist.size   = socket->count;
-    socklist.map    = calloc(socket->count, sizeof(sockmap_t));
-    if (socklist.map == NULL) {
+    if (socklist_init(&socklist, socket->count) != 0) {
         exitcode = 2;
         goto main_FINISH;
     }
-    
     for (int i=0; i<socket->count; i++) {
-        const char* sep;
-        const char* end;
-        int strsize;
-        
-        // 1. look for ':' which is path separator
-        end = strchr(socket->sval[i], 0);
-        sep = strchr(socket->sval[i], ':');
-        if ((sep == NULL) || (end == NULL)) {
-            printf("Error: socket input \"%s\" is not correctly formatted.\n", socket->sval[i]);
-            exitcode = 3;
-            continue;
-        }
-        
-        // 2. store the local socket
-        ///@todo check path is valid path
-        ///@todo have some way of type checking the type of the socket
-        ///@todo make pagesize configurable
-        strsize = (int)(sep - socket->sval[i]);
-        if (strsize <= 0) {
-            exitcode = 4;
-            goto main_FINISH;
-        }
-        socklist.map[i].pagesize    = 128;
-        socklist.map[i].l_type      = 0;
-        socklist.map[i].l_socket    = malloc( (strsize+1) * sizeof(char) );
-        if (socklist.map[i].l_socket == NULL) {
-            exitcode = 5;
-            goto main_FINISH;
-        }
-        socklist.map[i].l_socket[strsize] = 0;
-        memcpy(socklist.map[i].l_socket, socket->sval[i], strsize);
-        
-        // 3. store the websocket
-        ///@todo check path is valid path
-        sep++;
-        strsize = (int)(end - sep);
-        if (strsize <= 0) {
-            exitcode = 6;
-            goto main_FINISH;
-        }
-        socklist.map[i].websocket   = malloc( (strsize+1) * sizeof(char) );
-        if (socklist.map[i].websocket == NULL) {
-            exitcode = 7;
-            goto main_FINISH;
-        }
-        socklist.map[i].websocket[strsize] = 0;
-        memcpy(socklist.map[i].websocket, socket->sval[i], strsize);
+        socklist_addmap(socklist, socket->sval[i]);
     }
     
     if (exitcode != 0) {
@@ -296,16 +245,13 @@ int main(int argc, char* argv[]) {
         exitcode = wfedd(   (const char*)rsrc_val, 
                             (const char*)urlpath_val, 
                             port_val, tls_val, 
-                            &socklist
+                            socklist
                         );
     }
 printf("%s %i\n", __FUNCTION__, __LINE__);
+
     /// Free allocated data
-    for (int i=0; i<socklist.size; i++) {
-        free(socklist.map[i].l_socket);
-        free(socklist.map[i].websocket);
-    }
-    free(socklist.map);
+    socklist_deinit(socklist);
     free(rsrc_val);
     free(urlpath_val);
 
