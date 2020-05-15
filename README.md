@@ -8,14 +8,13 @@ wfedd uses libwebsockets, and it will create a very minimal webserver instance c
 
 ### External Dependencies
 
-There are some external dependencies for wfedd.  All of these are relatively common to Mac and Linux distributions, and virtually all package managers have packages for all of them.  It should be noted that all these dependencies are, in fact, child dependencies of libwebsockets.
+There are some external dependencies for wfedd.  All of these are relatively common to Mac and Linux distributions, and virtually all package managers have packages for all of them.  It should be noted that several of these dependencies are, in fact, child dependencies of libwebsockets, so if you have libwebsockets on your system, that's probably enough to be sure that `wfedd` will build and run.
 
-* [libwebsockets](https://libwebsockets.org)
-* [libev](http://software.schmorp.de/pkg/libev.html)
-* [libuv](http://docs.libuv.org/en/v1.x/design.html)
-* libcrypto, libssl (from [OpenSSL](https://www.openssl.org) 1.1 or compatible)
-* [glib 2.x](https://developer.gnome.org/glib/)
-* [zlib](https://www.zlib.net)
+* [libbsd](https://libbsd.freedesktop.org/wiki/) (obviously not needed if your platform is a BSD)
+* [libwebsockets](https://libwebsockets.org) _child dependencies below_
+  * libcrypto, libssl (from [OpenSSL](https://www.openssl.org) 1.1 or compatible)
+  * [glib 2.x](https://developer.gnome.org/glib/)
+  * [zlib](https://www.zlib.net)
 
 ### HBuilder Dependencies
 
@@ -33,8 +32,6 @@ If you want to build wfedd outside of the hbgw_middleware repository framework, 
 * _hbsys
 * argtable
 * **wfedd**
-* hbutils
-* otvar
 
 From this point:
 

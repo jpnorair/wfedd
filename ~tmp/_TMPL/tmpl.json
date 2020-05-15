@@ -1,0 +1,1256 @@
+{
+	"sleep_scan_sequence":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	5,
+			"mod":	52,
+			"size":	32,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"next_1":	{
+				"pos":	0,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_1":	{
+				"pos":	2,
+				"type":	"hex[1]",
+				"def":	"28"
+			},
+			"scan_1":	{
+				"pos":	3,
+				"type":	"hex[1]",
+				"def":	"50"
+			},
+			"next_2":	{
+				"pos":	4,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_2":	{
+				"pos":	6,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_2":	{
+				"pos":	7,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_3":	{
+				"pos":	8,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_3":	{
+				"pos":	10,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_3":	{
+				"pos":	11,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_4":	{
+				"pos":	12,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_4":	{
+				"pos":	14,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_4":	{
+				"pos":	15,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_5":	{
+				"pos":	16,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_5":	{
+				"pos":	18,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_5":	{
+				"pos":	19,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_6":	{
+				"pos":	20,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_6":	{
+				"pos":	22,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_6":	{
+				"pos":	23,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_7":	{
+				"pos":	24,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_7":	{
+				"pos":	26,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_7":	{
+				"pos":	27,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_8":	{
+				"pos":	28,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_8":	{
+				"pos":	30,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_8":	{
+				"pos":	31,
+				"type":	"hex[1]",
+				"def":	"00"
+			}
+		}
+	},
+	"sensor_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	12,
+			"mod":	36,
+			"size":	16,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"sensor_alarms":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	13,
+			"mod":	36,
+			"size":	2,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 0]
+	},
+	"iss_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	8,
+			"mod":	36,
+			"size":	16,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 1, 2, 3, 16, 17, 18, 24, 128, 129, 130, 131, 0, 0, 0, 0]
+	},
+	"ipv6_addresses":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	11,
+			"mod":	52,
+			"size":	0,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[]
+	},
+	"agnss_input":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	24,
+			"mod":	52,
+			"size":	0,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[]
+	},
+	"gfb_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	9,
+			"mod":	36,
+			"size":	8,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"location_demo":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	25,
+			"mod":	52,
+			"size":	20,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"flags":	{
+				"pos":	0,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"accscore":	{
+				"pos":	1,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"rssi":	{
+				"pos":	2,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"linkloss":	{
+				"pos":	3,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"lat":	{
+				"pos":	4,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"lon":	{
+				"pos":	8,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"id":	{
+				"pos":	12,
+				"type":	"hex[8]",
+				"def":	"0000000000000000"
+			}
+		}
+	},
+	"user_id":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	17,
+			"mod":	52,
+			"size":	50,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"root_auth_key":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	14,
+			"mod":	0,
+			"size":	22,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"info":	{
+				"pos":	0,
+				"type":	"hex[2]",
+				"def":	"0038"
+			},
+			"lifetime":	{
+				"pos":	2,
+				"type":	"uint32_t",
+				"def":	86400
+			},
+			"key":	{
+				"pos":	6,
+				"type":	"hex[16]",
+				"def":	"00112233445566778899AABBCCDDEEFF"
+			}
+		}
+	},
+	"channel_configuration":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	2,
+			"mod":	52,
+			"size":	48,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"header":	{
+				"pos":	0,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"regcode":	{
+				"pos":	2,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"txduty":	{
+				"pos":	3,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"txscale":	{
+				"pos":	4,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"rfu5":	{
+				"pos":	5,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"specid_ch1":	{
+				"pos":	6,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"rfu_ch1":	{
+				"pos":	7,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"maxpwr_ch1":	{
+				"pos":	8,
+				"type":	"uint8_t",
+				"def":	108
+			},
+			"lqi_ch1":	{
+				"pos":	9,
+				"type":	"uint8_t",
+				"def":	160
+			},
+			"csrssi_ch1":	{
+				"pos":	10,
+				"type":	"uint8_t",
+				"def":	10
+			},
+			"ccarssi_ch1":	{
+				"pos":	11,
+				"type":	"uint8_t",
+				"def":	20
+			},
+			"specid_ch2":	{
+				"pos":	12,
+				"type":	"uint8_t",
+				"def":	16
+			},
+			"rfu_ch2":	{
+				"pos":	13,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"maxpwr_ch2":	{
+				"pos":	14,
+				"type":	"uint8_t",
+				"def":	108
+			},
+			"lqi_ch2":	{
+				"pos":	15,
+				"type":	"uint8_t",
+				"def":	145
+			},
+			"csrssi_ch2":	{
+				"pos":	16,
+				"type":	"uint8_t",
+				"def":	15
+			},
+			"ccarssi_ch2":	{
+				"pos":	17,
+				"type":	"uint8_t",
+				"def":	25
+			},
+			"specid_ch3":	{
+				"pos":	18,
+				"type":	"uint8_t",
+				"def":	32
+			},
+			"rfu_ch3":	{
+				"pos":	19,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"maxpwr_ch3":	{
+				"pos":	20,
+				"type":	"uint8_t",
+				"def":	108
+			},
+			"lqi_ch3":	{
+				"pos":	21,
+				"type":	"uint8_t",
+				"def":	140
+			},
+			"csrssi_ch3":	{
+				"pos":	22,
+				"type":	"uint8_t",
+				"def":	20
+			},
+			"ccarssi_ch3":	{
+				"pos":	23,
+				"type":	"uint8_t",
+				"def":	30
+			},
+			"specid_ch4":	{
+				"pos":	24,
+				"type":	"uint8_t",
+				"def":	48
+			},
+			"rfu_ch4":	{
+				"pos":	25,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"maxpwr_ch4":	{
+				"pos":	26,
+				"type":	"uint8_t",
+				"def":	108
+			},
+			"lqi_ch4":	{
+				"pos":	27,
+				"type":	"uint8_t",
+				"def":	135
+			},
+			"csrssi_ch4":	{
+				"pos":	28,
+				"type":	"uint8_t",
+				"def":	25
+			},
+			"ccarssi_ch4":	{
+				"pos":	29,
+				"type":	"uint8_t",
+				"def":	35
+			},
+			"specid_ch5":	{
+				"pos":	30,
+				"type":	"uint8_t",
+				"def":	48
+			},
+			"rfu_ch5":	{
+				"pos":	31,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"maxpwr_ch5":	{
+				"pos":	32,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"lqi_ch5":	{
+				"pos":	33,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"csrssi_ch5":	{
+				"pos":	34,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"ccarssi_ch5":	{
+				"pos":	35,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"specid_ch6":	{
+				"pos":	36,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"rfu_ch6":	{
+				"pos":	37,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"maxpwr_ch6":	{
+				"pos":	38,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"lqi_ch6":	{
+				"pos":	39,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"csrssi_ch6":	{
+				"pos":	40,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"ccarssi_ch6":	{
+				"pos":	41,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"specid_ch7":	{
+				"pos":	42,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"rfu_ch7":	{
+				"pos":	43,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"maxpwr_ch7":	{
+				"pos":	44,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"lqi_ch7":	{
+				"pos":	45,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"csrssi_ch7":	{
+				"pos":	46,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"ccarssi_ch7":	{
+				"pos":	47,
+				"type":	"uint8_t",
+				"def":	0
+			}
+		}
+	},
+	"network_settings":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	0,
+			"mod":	52,
+			"size":	10,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"vid":	{
+				"pos":	0,
+				"type":	"hex[2]",
+				"def":	"0000"
+			},
+			"subnet":	{
+				"pos":	2,
+				"type":	"uint8_t",
+				"def":	17
+			},
+			"bsubnet":	{
+				"pos":	3,
+				"type":	"uint8_t",
+				"def":	17
+			},
+			"settings":	{
+				"pos":	4,
+				"type":	"hex[2]",
+				"def":	"0437"
+			},
+			"defflags":	{
+				"pos":	6,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"battempts":	{
+				"pos":	7,
+				"type":	"uint8_t",
+				"def":	1
+			},
+			"hold":	{
+				"pos":	8,
+				"type":	"uint16_t",
+				"def":	2
+			}
+		}
+	},
+	"optional_cmd_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	18,
+			"mod":	52,
+			"size":	8,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"routing_code":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	16,
+			"mod":	36,
+			"size":	60,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"hold_scan_sequence":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	4,
+			"mod":	52,
+			"size":	32,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"next_1":	{
+				"pos":	0,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_1":	{
+				"pos":	2,
+				"type":	"hex[1]",
+				"def":	"28"
+			},
+			"scan_1":	{
+				"pos":	3,
+				"type":	"hex[1]",
+				"def":	"31"
+			},
+			"next_2":	{
+				"pos":	4,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_2":	{
+				"pos":	6,
+				"type":	"hex[1]",
+				"def":	"2B"
+			},
+			"scan_2":	{
+				"pos":	7,
+				"type":	"hex[1]",
+				"def":	"31"
+			},
+			"next_3":	{
+				"pos":	8,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_3":	{
+				"pos":	10,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_3":	{
+				"pos":	11,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_4":	{
+				"pos":	12,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_4":	{
+				"pos":	14,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_4":	{
+				"pos":	15,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_5":	{
+				"pos":	16,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_5":	{
+				"pos":	18,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_5":	{
+				"pos":	19,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_6":	{
+				"pos":	20,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_6":	{
+				"pos":	22,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_6":	{
+				"pos":	23,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_7":	{
+				"pos":	24,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_7":	{
+				"pos":	26,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_7":	{
+				"pos":	27,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"next_8":	{
+				"pos":	28,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_8":	{
+				"pos":	30,
+				"type":	"hex[1]",
+				"def":	"00"
+			},
+			"scan_8":	{
+				"pos":	31,
+				"type":	"hex[1]",
+				"def":	"00"
+			}
+		}
+	},
+	"realtime_vars":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	3,
+			"mod":	52,
+			"size":	12,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"holdsync_mask":	{
+				"pos":	0,
+				"type":	"uint16_t",
+				"def":	15
+			},
+			"holdsync_value":	{
+				"pos":	2,
+				"type":	"uint16_t",
+				"def":	8
+			},
+			"sleepsync_mask":	{
+				"pos":	4,
+				"type":	"uint16_t",
+				"def":	3
+			},
+			"sleepsync_value":	{
+				"pos":	6,
+				"type":	"uint16_t",
+				"def":	2
+			},
+			"beaconsync_mask":	{
+				"pos":	8,
+				"type":	"uint16_t",
+				"def":	3
+			},
+			"beaconsync_value":	{
+				"pos":	10,
+				"type":	"uint16_t",
+				"def":	2
+			}
+		}
+	},
+	"memory_size":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	19,
+			"mod":	52,
+			"size":	12,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"user_auth_key":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	15,
+			"mod":	48,
+			"size":	22,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"info":	{
+				"pos":	0,
+				"type":	"hex[2]",
+				"def":	"0007"
+			},
+			"lifetime":	{
+				"pos":	2,
+				"type":	"uint32_t",
+				"def":	86400
+			},
+			"key":	{
+				"pos":	6,
+				"type":	"hex[16]",
+				"def":	"000102030405060708090A0B0C0D0E0F"
+			}
+		}
+	},
+	"isf_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	7,
+			"mod":	36,
+			"size":	24,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"table_query_results":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	21,
+			"mod":	52,
+			"size":	8,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"beacon_transmit_sequence":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	6,
+			"mod":	52,
+			"size":	24,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"next_1":	{
+				"pos":	0,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_1":	{
+				"pos":	2,
+				"type":	"hex[1]",
+				"def":	"28"
+			},
+			"params_1":	{
+				"pos":	3,
+				"type":	"hex[1]",
+				"def":	"20000008"
+			},
+			"call_1":	{
+				"pos":	4,
+				"type":	"hex[4]",
+				"def":	"20000008"
+			},
+			"next_2":	{
+				"pos":	8,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_2":	{
+				"pos":	10,
+				"type":	"hex[1]",
+				"def":	"28"
+			},
+			"params_2":	{
+				"pos":	11,
+				"type":	"hex[1]",
+				"def":	"20000008"
+			},
+			"call_2":	{
+				"pos":	12,
+				"type":	"hex[4]",
+				"def":	"20000008"
+			},
+			"next_3":	{
+				"pos":	16,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"chan_3":	{
+				"pos":	18,
+				"type":	"hex[1]",
+				"def":	"28"
+			},
+			"params_3":	{
+				"pos":	19,
+				"type":	"hex[1]",
+				"def":	"20000008"
+			},
+			"call_3":	{
+				"pos":	20,
+				"type":	"hex[4]",
+				"def":	"20000008"
+			}
+		}
+	},
+	"gnss_output":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	23,
+			"mod":	52,
+			"size":	92,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"iTOW":	{
+				"pos":	0,
+				"type":	"uint32_t",
+				"def":	0
+			},
+			"year":	{
+				"pos":	4,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"month":	{
+				"pos":	6,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"day":	{
+				"pos":	7,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"hour":	{
+				"pos":	8,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"min":	{
+				"pos":	9,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"sec":	{
+				"pos":	10,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"valid":	{
+				"pos":	11,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"tAcc":	{
+				"pos":	12,
+				"type":	"uint32_t",
+				"def":	0
+			},
+			"nano":	{
+				"pos":	16,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"fixType":	{
+				"pos":	20,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"flags":	{
+				"pos":	21,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"flags2":	{
+				"pos":	22,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"numSV":	{
+				"pos":	23,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"lon":	{
+				"pos":	24,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"lat":	{
+				"pos":	28,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"height":	{
+				"pos":	32,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"hMSL":	{
+				"pos":	36,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"hAcc":	{
+				"pos":	40,
+				"type":	"uint32_t",
+				"def":	0
+			},
+			"vAcc":	{
+				"pos":	44,
+				"type":	"uint32_t",
+				"def":	0
+			},
+			"velN":	{
+				"pos":	48,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"velE":	{
+				"pos":	52,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"velD":	{
+				"pos":	56,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"gSpeed":	{
+				"pos":	60,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"headMot":	{
+				"pos":	64,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"sAcc":	{
+				"pos":	68,
+				"type":	"uint32_t",
+				"def":	0
+			},
+			"headAcc":	{
+				"pos":	72,
+				"type":	"uint32_t",
+				"def":	0
+			},
+			"pDOP":	{
+				"pos":	76,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"reserved1":	{
+				"pos":	78,
+				"type":	"hex[6]",
+				"def":	"000000000000"
+			},
+			"headVeh":	{
+				"pos":	84,
+				"type":	"int32_t",
+				"def":	0
+			},
+			"magDec":	{
+				"pos":	88,
+				"type":	"int16_t",
+				"def":	0
+			},
+			"magAcc":	{
+				"pos":	90,
+				"type":	"uint16_t",
+				"def":	0
+			}
+		}
+	},
+	"location_data_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	10,
+			"mod":	36,
+			"size":	0,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[]
+	},
+	"device_features":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	1,
+			"mod":	36,
+			"size":	48,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct",
+			"modtime":	1589482061
+		},
+		"_content":	{
+			"uid":	{
+				"pos":	0,
+				"type":	"hex[8]",
+				"def":	"DA54700101010101"
+			},
+			"settings":	{
+				"pos":	8,
+				"type":	"hex[2]",
+				"def":	"0737"
+			},
+			"maxframe":	{
+				"pos":	10,
+				"type":	"uint8_t",
+				"def":	255
+			},
+			"maxpacket":	{
+				"pos":	11,
+				"type":	"uint8_t",
+				"def":	1
+			},
+			"macmodes":	{
+				"pos":	12,
+				"type":	"uint16_t",
+				"def":	1
+			},
+			"nlsmodes":	{
+				"pos":	14,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"isfsize":	{
+				"pos":	16,
+				"type":	"uint16_t",
+				"def":	2048
+			},
+			"isffree":	{
+				"pos":	18,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"isssize":	{
+				"pos":	20,
+				"type":	"uint16_t",
+				"def":	256
+			},
+			"issfree":	{
+				"pos":	22,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"gfbsize":	{
+				"pos":	24,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"gfbfree":	{
+				"pos":	26,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"gfbfree":	{
+				"pos":	28,
+				"type":	"uint16_t",
+				"def":	0
+			},
+			"rfu":	{
+				"pos":	30,
+				"type":	"uint8_t",
+				"def":	0
+			},
+			"sessiondepth":	{
+				"pos":	31,
+				"type":	"uint8_t",
+				"def":	8
+			},
+			"fwversion":	{
+				"pos":	32,
+				"type":	"char[16]",
+				"def":	"OTv1"
+			}
+		}
+	},
+	"table_query_size":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	20,
+			"mod":	52,
+			"size":	2,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 0]
+	},
+	"hwfault_status":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	22,
+			"mod":	52,
+			"size":	4,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array",
+			"modtime":	1589482061
+		},
+		"_content":	[0, 0, 0, 0]
+	}
+}

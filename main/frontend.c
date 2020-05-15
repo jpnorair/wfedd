@@ -1,34 +1,28 @@
-/* Copyright 2020, JP Norair
- * 
- * Licensed under the OpenTag License, Version 1.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.indigresso.com/wiki/doku.php?id=opentag:license_1_0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * ----------------------------------------------------------------------------
- * This is a derivative work by JP Norair based on example software from the
- * libwebsockets project.  The libwebsockets example code is released in the
- * public domain, with all rights waived, as descibed below.
- * 
- * ws protocol handler plugin for "lws-minimal"
- *
- * Written in 2010-2019 by Andy Green <andy@warmcat.com>
- *
- * This file is made available under the Creative Commons CC0 1.0
- * Universal Public Domain Dedication.
- * ----------------------------------------------------------------------------
- *
- * This version holds a single message at a time, which may be lost if a new
- * message comes.  See the minimal-ws-server-ring sample for the same thing
- * but using an lws_ring ringbuffer to hold up to 8 messages at a time.
- */
+/*  Copyright 2020, JP Norair
+  *
+  * Redistribution and use in source and binary forms, with or without 
+  * modification, are permitted provided that the following conditions are met:
+  *
+  * 1. Redistributions of source code must retain the above copyright notice, 
+  *    this list of conditions and the following disclaimer.
+  *
+  * 2. Redistributions in binary form must reproduce the above copyright 
+  *    notice, this list of conditions and the following disclaimer in the 
+  *    documentation and/or other materials provided with the distribution.
+  *
+  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
+  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+  * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
+  * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
+  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+  * POSSIBILITY OF SUCH DAMAGE.
+  */
+  
 
 #include "frontend.h"
 #include "backend.h"
@@ -59,16 +53,22 @@ int frontend_http_callback(  struct lws *wsi,
 /// @note The "void* in" parameter will contain a struct pollfd* datatype.
 ///       The "void* user" parameter will store the backend handle.
     
+printf("%s %i\n", __FUNCTION__, __LINE__);
+printf("reason = %i\n", reason);
+    
     /// @todo look into returning the value from conn_ws_...() functions
     /// rather than just 0.
     switch (reason) {
         case LWS_CALLBACK_ADD_POLL_FD: 
+printf("%s %i\n", __FUNCTION__, __LINE__);
             pollfd_open(user, (struct pollfd*)in);
             return 0;
         case LWS_CALLBACK_DEL_POLL_FD: 
+printf("%s %i\n", __FUNCTION__, __LINE__);
             pollfd_close(user, (struct pollfd*)in);
             return 0;
         case LWS_CALLBACK_CHANGE_MODE_POLL_FD:
+printf("%s %i\n", __FUNCTION__, __LINE__);
             pollfd_update(user, (struct pollfd*)in);
             return 0;
 
@@ -93,6 +93,8 @@ int frontend_ws_callback(   struct lws *wsi,
 	struct per_vhost_data *vhd;
 	int m;
     int rc = 0;   
+
+printf("%s %i\n", __FUNCTION__, __LINE__);
 
     ///@todo make sure this wasn't as "Static" from demo app
     pss = (struct per_session_data *)user;
@@ -256,6 +258,10 @@ void* frontend_start(void* backend_handle,
     if (context == NULL) {
         lwsl_err("lws init failed\n");
     }
+    
+    /// Run lws_service() in order to do a first pass on the HTTP Protocol-0.
+    /// Otherwise, backend won't have any fds to poll.
+    //lws_service(context, 0);
     
     return context;
 }

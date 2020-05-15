@@ -1,18 +1,27 @@
-/* Copyright 2020, JP Norair
-*
-* Licensed under the OpenTag License, Version 1.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-* http://www.indigresso.com/wiki/doku.php?id=opentag:license_1_0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*
-*/
+/*  Copyright 2020, JP Norair
+  *
+  * Redistribution and use in source and binary forms, with or without 
+  * modification, are permitted provided that the following conditions are met:
+  *
+  * 1. Redistributions of source code must retain the above copyright notice, 
+  *    this list of conditions and the following disclaimer.
+  *
+  * 2. Redistributions in binary form must reproduce the above copyright 
+  *    notice, this list of conditions and the following disclaimer in the 
+  *    documentation and/or other materials provided with the distribution.
+  *
+  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
+  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+  * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
+  * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
+  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+  * POSSIBILITY OF SUCH DAMAGE.
+  */
 
 #include <libwebsockets.h>
 #include <string.h>
@@ -122,7 +131,6 @@ int main(int argc, char* argv[]) {
         printf("%s -- %s\n", WFEDD_PARAM_VERSION, WFEDD_PARAM_DATE);
         printf("Commit-ID: %s\n", WFEDD_PARAM_GITHEAD);
         printf("Designed by %s\n", WFEDD_PARAM_BYLINE);
-        printf("Based on wfedd by JP Norair (indigresso.com)\n");
         exitcode = 0;
         goto main_FINISH;
     }
@@ -160,6 +168,7 @@ int main(int argc, char* argv[]) {
     if (tls->count > 0) {
         tls_val = true;
     }
+    
     if (rsrc->count > 0) {
         ///@todo test that rsrc->sval[0] is to a real directory
         ///@todo test that rsrc dir contains a directory called "mount-origin"
@@ -173,10 +182,19 @@ int main(int argc, char* argv[]) {
         }
         strcpy(rsrc_val, "./resources");
     }
+    
     if (urlpath->count > 0) {
         ///@todo test that urlpath->sval[0] is valid according to URL path rules
         FILL_STRINGARG(urlpath, urlpath_val);
     }
+    else {
+        urlpath_val = malloc(sizeof("/") + 1);                               \
+        if (urlpath_val == NULL) {
+            goto main_FINISH;
+        }
+        strcpy(urlpath_val, "/");
+    }
+    
     if (port->count > 0) {
         if ((port->ival[0] >= 0) || (port->ival[0] >= 65536)) {
             printf("Error: Supplied port is out of acceptable range (1-65535)\n");
@@ -281,7 +299,7 @@ int main(int argc, char* argv[]) {
                             &socklist
                         );
     }
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     /// Free allocated data
     for (int i=0; i<socklist.size; i++) {
         free(socklist.map[i].l_socket);
@@ -307,8 +325,8 @@ int wfedd(  const char* rsrcpath,
     //void* backend_handle;
     //void* frontend_handle;
     
-    char* certpath;
-    char* keypath;
+    char* certpath  = NULL;
+    char* keypath   = NULL;
     int cursor;
     int logs_mask;
     int exitcode = 0;
@@ -318,7 +336,7 @@ int wfedd(  const char* rsrcpath,
     char* str_mountorigin;
     const char* protocol_http = "http";
     const char* hostname = "localhost";
-    
+
     struct lws_http_mount mount = {
         .mount_next             = NULL,             // linked-list "next" 
         .mountpoint             = urlpath,          // e.g. "/"
@@ -338,7 +356,7 @@ int wfedd(  const char* rsrcpath,
         .mountpoint_len         = strlen(urlpath),  // char count
         .basic_auth_login_file  = NULL,
     };
-
+    
     ///1. Create the protocol list array
     protocols = calloc(2+socklist->size, sizeof(struct lws_protocols));
     if (protocols == NULL) {
@@ -402,12 +420,12 @@ int wfedd(  const char* rsrcpath,
     /// Startup Message: just printed to console and not saved
     printf("Starting wfedd on:\n");
     printf(" * mount:%s/mount-origin\n", rsrcpath);
-    printf(" * %s://localhost:%i/%s\n", use_tls ? "http" : "https", port, urlpath);
+    printf(" * %s://localhost:%i%s\n", use_tls ? "https" : "http", port, urlpath);
     if (use_tls) {
         printf(" * %s\n", certpath);
         printf(" * %s\n", keypath);
     }
-
+printf("%s %i\n", __FUNCTION__, __LINE__);
     ///3. Run the polling subsystem (backend).
     ///   This will also invoke the frontend parts, which is the libwebsockets element.
     // Logs configuration (to stdout)
@@ -425,11 +443,11 @@ int wfedd(  const char* rsrcpath,
                 false,  ///@todo -v argument from demo app (do_fastmonitoring)
                 hostname,
                 port, 
-                use_tls ? certpath : NULL,
-                use_tls ? keypath : NULL,
+                certpath,
+                keypath,
                 protocols,
                 &mount      );
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     wfedd_FINISH:
     switch (exitcode) {
        default: 

@@ -1,0 +1,506 @@
+{
+	"sleep_scan_sequence":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	5,
+			"mod":	52,
+			"size":	32,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"next_1":	0,
+			"chan_1":	"28",
+			"scan_1":	"50",
+			"next_2":	0,
+			"chan_2":	"00",
+			"scan_2":	"00",
+			"next_3":	0,
+			"chan_3":	"00",
+			"scan_3":	"00",
+			"next_4":	0,
+			"chan_4":	"00",
+			"scan_4":	"00",
+			"next_5":	0,
+			"chan_5":	"00",
+			"scan_5":	"00",
+			"next_6":	0,
+			"chan_6":	"00",
+			"scan_6":	"00",
+			"next_7":	0,
+			"chan_7":	"00",
+			"scan_7":	"00",
+			"next_8":	0,
+			"chan_8":	"00",
+			"scan_8":	"00"
+		}
+	},
+	"sensor_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	12,
+			"mod":	36,
+			"size":	16,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"sensor_alarms":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	13,
+			"mod":	36,
+			"size":	2,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 0]
+	},
+	"iss_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	8,
+			"mod":	36,
+			"size":	16,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 1, 2, 3, 16, 17, 18, 24, 128, 129, 130, 131, 0, 0, 0, 0]
+	},
+	"ipv6_addresses":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	11,
+			"mod":	52,
+			"size":	0,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[]
+	},
+	"agnss_input":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	24,
+			"mod":	52,
+			"size":	0,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[]
+	},
+	"gfb_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	9,
+			"mod":	36,
+			"size":	8,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"location_demo":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	25,
+			"mod":	52,
+			"size":	20,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"flags":	0,
+			"accscore":	0,
+			"rssi":	0,
+			"linkloss":	0,
+			"lat":	0,
+			"lon":	0,
+			"id":	"0000000000000000"
+		}
+	},
+	"user_id":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	17,
+			"mod":	52,
+			"size":	50,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"root_auth_key":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	14,
+			"mod":	0,
+			"size":	22,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"info":	"0038",
+			"lifetime":	86400,
+			"key":	"00112233445566778899AABBCCDDEEFF"
+		}
+	},
+	"channel_configuration":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	2,
+			"mod":	52,
+			"size":	48,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"header":	0,
+			"regcode":	0,
+			"txduty":	0,
+			"txscale":	0,
+			"rfu5":	0,
+			"specid_ch1":	0,
+			"rfu_ch1":	0,
+			"maxpwr_ch1":	108,
+			"lqi_ch1":	160,
+			"csrssi_ch1":	10,
+			"ccarssi_ch1":	20,
+			"specid_ch2":	16,
+			"rfu_ch2":	0,
+			"maxpwr_ch2":	108,
+			"lqi_ch2":	145,
+			"csrssi_ch2":	15,
+			"ccarssi_ch2":	25,
+			"specid_ch3":	32,
+			"rfu_ch3":	0,
+			"maxpwr_ch3":	108,
+			"lqi_ch3":	140,
+			"csrssi_ch3":	20,
+			"ccarssi_ch3":	30,
+			"specid_ch4":	48,
+			"rfu_ch4":	0,
+			"maxpwr_ch4":	108,
+			"lqi_ch4":	135,
+			"csrssi_ch4":	25,
+			"ccarssi_ch4":	35,
+			"specid_ch5":	48,
+			"rfu_ch5":	0,
+			"maxpwr_ch5":	0,
+			"lqi_ch5":	0,
+			"csrssi_ch5":	0,
+			"ccarssi_ch5":	0,
+			"specid_ch6":	0,
+			"rfu_ch6":	0,
+			"maxpwr_ch6":	0,
+			"lqi_ch6":	0,
+			"csrssi_ch6":	0,
+			"ccarssi_ch6":	0,
+			"specid_ch7":	0,
+			"rfu_ch7":	0,
+			"maxpwr_ch7":	0,
+			"lqi_ch7":	0,
+			"csrssi_ch7":	0,
+			"ccarssi_ch7":	0
+		}
+	},
+	"network_settings":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	0,
+			"mod":	52,
+			"size":	10,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"vid":	"0000",
+			"subnet":	17,
+			"bsubnet":	17,
+			"settings":	"0437",
+			"defflags":	0,
+			"battempts":	1,
+			"hold":	2
+		}
+	},
+	"optional_cmd_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	18,
+			"mod":	52,
+			"size":	8,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"routing_code":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	16,
+			"mod":	36,
+			"size":	60,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"hold_scan_sequence":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	4,
+			"mod":	52,
+			"size":	32,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"next_1":	0,
+			"chan_1":	"28",
+			"scan_1":	"31",
+			"next_2":	0,
+			"chan_2":	"2B",
+			"scan_2":	"31",
+			"next_3":	0,
+			"chan_3":	"00",
+			"scan_3":	"00",
+			"next_4":	0,
+			"chan_4":	"00",
+			"scan_4":	"00",
+			"next_5":	0,
+			"chan_5":	"00",
+			"scan_5":	"00",
+			"next_6":	0,
+			"chan_6":	"00",
+			"scan_6":	"00",
+			"next_7":	0,
+			"chan_7":	"00",
+			"scan_7":	"00",
+			"next_8":	0,
+			"chan_8":	"00",
+			"scan_8":	"00"
+		}
+	},
+	"realtime_vars":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	3,
+			"mod":	52,
+			"size":	12,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"holdsync_mask":	15,
+			"holdsync_value":	8,
+			"sleepsync_mask":	3,
+			"sleepsync_value":	2,
+			"beaconsync_mask":	3,
+			"beaconsync_value":	2
+		}
+	},
+	"memory_size":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	19,
+			"mod":	52,
+			"size":	12,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"user_auth_key":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	15,
+			"mod":	48,
+			"size":	22,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"info":	"0007",
+			"lifetime":	86400,
+			"key":	"000102030405060708090A0B0C0D0E0F"
+		}
+	},
+	"isf_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	7,
+			"mod":	36,
+			"size":	24,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"table_query_results":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	21,
+			"mod":	52,
+			"size":	8,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 0, 0, 0, 0, 0, 0, 0]
+	},
+	"beacon_transmit_sequence":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	6,
+			"mod":	52,
+			"size":	24,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"next_1":	0,
+			"chan_1":	"28",
+			"params_1":	"20000008",
+			"call_1":	"20000008",
+			"next_2":	0,
+			"chan_2":	"28",
+			"params_2":	"20000008",
+			"call_2":	"20000008",
+			"next_3":	0,
+			"chan_3":	"28",
+			"params_3":	"20000008",
+			"call_3":	"20000008"
+		}
+	},
+	"gnss_output":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	23,
+			"mod":	52,
+			"size":	92,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"iTOW":	0,
+			"year":	0,
+			"month":	0,
+			"day":	0,
+			"hour":	0,
+			"min":	0,
+			"sec":	0,
+			"valid":	0,
+			"tAcc":	0,
+			"nano":	0,
+			"fixType":	0,
+			"flags":	0,
+			"flags2":	0,
+			"numSV":	0,
+			"lon":	0,
+			"lat":	0,
+			"height":	0,
+			"hMSL":	0,
+			"hAcc":	0,
+			"vAcc":	0,
+			"velN":	0,
+			"velE":	0,
+			"velD":	0,
+			"gSpeed":	0,
+			"headMot":	0,
+			"sAcc":	0,
+			"headAcc":	0,
+			"pDOP":	0,
+			"reserved1":	"000000000000",
+			"headVeh":	0,
+			"magDec":	0,
+			"magAcc":	0
+		}
+	},
+	"location_data_list":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	10,
+			"mod":	36,
+			"size":	0,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[]
+	},
+	"device_features":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	1,
+			"mod":	36,
+			"size":	48,
+			"stock":	true,
+			"pos":	0,
+			"type":	"struct"
+		},
+		"_content":	{
+			"uid":	"DA54700101010101",
+			"settings":	"0737",
+			"maxframe":	255,
+			"maxpacket":	1,
+			"macmodes":	1,
+			"nlsmodes":	0,
+			"isfsize":	2048,
+			"isffree":	0,
+			"isssize":	256,
+			"issfree":	0,
+			"gfbsize":	0,
+			"gfbfree":	0,
+			"gfbfree":	0,
+			"rfu":	0,
+			"sessiondepth":	8,
+			"fwversion":	"OTv1"
+		}
+	},
+	"table_query_size":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	20,
+			"mod":	52,
+			"size":	2,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 0]
+	},
+	"hwfault_status":	{
+		"_meta":	{
+			"block":	"isf",
+			"id":	22,
+			"mod":	52,
+			"size":	4,
+			"stock":	true,
+			"pos":	0,
+			"type":	"array"
+		},
+		"_content":	[0, 0, 0, 0]
+	}
+}

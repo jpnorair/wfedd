@@ -1,18 +1,27 @@
-/* Copyright 2020, JP Norair
-*
-* Licensed under the OpenTag License, Version 1.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-* http://www.indigresso.com/wiki/doku.php?id=opentag:license_1_0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*
-*/
+/*  Copyright 2020, JP Norair
+  *
+  * Redistribution and use in source and binary forms, with or without 
+  * modification, are permitted provided that the following conditions are met:
+  *
+  * 1. Redistributions of source code must retain the above copyright notice, 
+  *    this list of conditions and the following disclaimer.
+  *
+  * 2. Redistributions in binary form must reproduce the above copyright 
+  *    notice, this list of conditions and the following disclaimer in the 
+  *    documentation and/or other materials provided with the distribution.
+  *
+  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
+  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
+  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
+  * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
+  * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
+  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
+  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN 
+  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+  * POSSIBILITY OF SUCH DAMAGE.
+  */
 
 
 
@@ -86,7 +95,7 @@ typedef struct {
     struct pollfd*      fds;
     fdsparam_t          fdsparam;
     size_t              bufsize;
-    birq_type           irq;
+    volatile birq_type  irq;
 } backend_t;
 
 
@@ -108,10 +117,10 @@ typedef struct cs {
 } conn_t;
 
 typedef enum {
-    ITEM_CONN,
-    ITEM_WSPOLLFD,
-    ITEM_MAX
-} dict_itemtype;
+    FILE_DS,
+    FILE_WS,
+    FILE_MAX
+} dict_filetype;
 
 typedef union {
     void* pointer;
@@ -121,7 +130,7 @@ typedef union {
 
 struct itemstruct {
     int id;
-    dict_itemtype type;
+    dict_filetype type;
     
     //conn_t conn;
     void* data;
@@ -152,7 +161,7 @@ void* dict_init(void) {
         dict->base = NULL;
     }
 
-    return NULL;
+    return dict;
 }
 
 
@@ -195,7 +204,7 @@ int dict_del(void* handle, int id) {
 }
 
 
-void* dict_new(int* err, void* handle, int id, dict_itemtype type) {
+void* dict_new(int* err, void* handle, int id, dict_filetype type) {
     struct itemstruct* input;
     dict_t* dict;
     size_t data_alloc;
@@ -223,8 +232,10 @@ void* dict_new(int* err, void* handle, int id, dict_itemtype type) {
     
     switch (type) {
         default:
-        case ITEM_CONN:         data_alloc = sizeof(conn_t);        break;
-        case ITEM_WSPOLLFD:     data_alloc = sizeof(struct pollfd); break;
+        case FILE_DS:   data_alloc = sizeof(conn_t);
+                        break;
+        case FILE_WS:   data_alloc = sizeof(struct pollfd);
+                        break;
     }
     input->data = malloc(data_alloc);
     if (input->data == NULL) {
@@ -245,7 +256,7 @@ void* dict_new(int* err, void* handle, int id, dict_itemtype type) {
 
 
 
-void* dict_get(void* handle, int id, dict_itemtype type) {
+void* dict_get(void* handle, int id, dict_filetype type) {
     struct itemstruct* item;
     dict_t* dict;
     
@@ -309,7 +320,7 @@ void sub_remap_innerloop(backend_t* backend) {
     // Move through the list until reaching a NULL item (the end of it).
     // load the updated filedict information into the backend fds array
     while (dict_item != NULL) {
-        if (dict_item->type == ITEM_CONN) {
+        if (dict_item->type == FILE_DS) {
             backend->fds[i].fd      = ((conn_t*)dict_item->data)->fd_ds;
             backend->fds[i].events  = (POLLIN | POLLNVAL | POLLHUP);
         }
@@ -382,31 +393,29 @@ void* poll_unix(void* args) {
     backend_t* backend  = args;
     uint8_t* readbuf;
     int ready_fds;
-    
+
     // Read buffer is allocated to a certain size dictated at wfedd startup
     readbuf = malloc(backend->bufsize * sizeof(uint8_t));
     if (readbuf == NULL) {
         ///@todo global error
         goto poll_unix_TERM;
     }
-    
+
     // Main operating Loop
     poll_unix_MAIN:
     backend->fdsparam.remap_pended = false;
-    
-    // If there are no active fds, we wait for a period.
-    if (backend->fdsparam.active <= 0) {
-        usleep(backend->fdsparam.wait_us);
-        goto poll_unix_MAIN;
-    }
-    
+
     ready_fds = poll(backend->fds, backend->fdsparam.active, backend->fdsparam.wait_us/1000 );
     if (ready_fds < 0) {
+printf("%s %i\n", __FUNCTION__, __LINE__);
         // poll() has been interrupted.
         // This can happen if the thread is cancelled.
         goto poll_unix_TERM;
     }
+    
     if (ready_fds == 0) {
+printf("%s %i\n", __FUNCTION__, __LINE__);
+printf("backend->irq = %i\n", backend->irq);
         // poll() has timed-out.
         // - This is a routine service interval.
         // - Check the backend status flag and take appropriate actions.
@@ -422,7 +431,9 @@ void* poll_unix(void* args) {
     // It will deal with any fd that has a websocket on it, and then it will
     // set the revents of that pollfd to zero.
     for (int i=0; i<backend->fdsparam.active; i++) {
-        
+
+printf("%s %i\n", __FUNCTION__, __LINE__);
+printf("fd = %i\n", backend->fds[i].fd);
         // Handle websockets.  Websockets (the frontend) will open or close
         // client connections to backend daemons as they open or close, so we
         // need to consider that the pollfd array will change.  That's what
@@ -441,7 +452,7 @@ void* poll_unix(void* args) {
             
             // Conn object contains the link to the websocket frontend.
             // Forward the data on this client socket to the websocket.
-            conn = (conn_t*)dict_get(backend->filedict, backend->fds[i].fd, ITEM_CONN);
+            conn = (conn_t*)dict_get(backend->filedict, backend->fds[i].fd, FILE_DS);
             if (conn != NULL) {
                 bytes_in = read(backend->fds[i].fd, readbuf, backend->bufsize);
                 if (frontend_createmsg(readbuf, bytes_in) != NULL) {
@@ -496,39 +507,38 @@ int backend_run(socklist_t* socklist,
     
     /// 1. Initialize the backend object
     
+    ///@todo take bufsize from cliopts.  Currently hardcoded to 1024.
+    ///@todo take wait_ms from cliopts.  Currently hardcoded to 20ms
+    ///@todo take fdsparams from cliopts.  Currently hardcoded.
+    backend.bufsize         = 1024;
+    backend.fdsparam.wait_us= 20 * 1000;
+    backend.fdsparam.active = 0;    // number of currently used fds
+    backend.fdsparam.group  = 4;    // reallocation chunk size
+    backend.fdsparam.total  = 8;    // total allocated size
+    
     // Things that must be initialized externally
     backend.socklist = socklist;
-    
+
     // initialize filedict
     backend.filedict = dict_init();
     if (backend.filedict == NULL) {
         rc = -1;
         goto backend_run_EXIT;
     }
-    
+
     // Configure backend parameters
     backend.fds = calloc(backend.fdsparam.total, sizeof(struct pollfd));
     if (backend.fds == NULL) {
         rc = -2;
         goto backend_run_EXIT;
     }
-    
-    // Initial fd list is a single interruptor pipe
-    // "poll_groupfds" is the reallocation chunk size
-    // "poll_activefds" is the number of actually used fds
-    backend.fdsparam.active = 0;
-    backend.fdsparam.group  = 4;
-    backend.fdsparam.total  = 8;
-    
+
     // This is a flag that tells the polling loop to restart.
     // It is set to true if the fds array is reallocated.
     backend.fdsparam.remap_pended = false;
-    
-    // This is the amount of microseconds to wait if there are no websockets
-    // and no daemons to poll.  Default is 10 ms.
-    backend.fdsparam.wait_us = 10 * 1000;
-    
-    /// 2. Initialize the frontend and link it back into the websocket context
+
+    /// 2. Initialize the frontend and link it back into the websocket context.
+    ///    It is important to run frontend_start() only after initializing
     backend.ws_context = frontend_start(&backend, logs_mask, do_hostcheck, 
                             do_fastmonitoring, hostname, port_number, certpath, 
                             keypath, protocols, mount);
@@ -536,39 +546,54 @@ int backend_run(socklist_t* socklist,
         rc = -3;
         goto backend_run_EXIT;
     }
-    
+
     /// 3. Run the backend loop.  There's an interrupt signal configured to
     ///    stop the backend loop, which is generally SIGINT.
     /// @todo maybe there's a way to pass a backend handle via sigaction.
-    birq_pointer = &(backend.irq);
+    backend.irq     = BIRQ_NONE;
+    birq_pointer    = &(backend.irq);
     signal(intsignal, backend_inthandler);
+
     
+    /// 4. Run the normal lws service loop until some frontend sockets are
+    ///    actually opened.  Then go into the unified polling loop.
+    while ((backend.irq == BIRQ_NONE) && (backend.fdsparam.active == 0)) {
+        if (lws_service(backend.ws_context, 0) < 0) {
+            goto backend_run_STOP;
+        }
+    }
+
+printf("backend->fdsparam.active = %i\n", backend.fdsparam.active);
+
     ///@note The architecture used here could allow threads, but it's much easier
     ///      to use libwebsockets in a single-threaded manner.
     ///@todo select the appropriate poll loop based on socket daemon specification.
     poll_rc = poll_unix((void*)&backend);
     
+    
+    backend_run_STOP:
+printf("%s %i\n", __FUNCTION__, __LINE__);
     /// 4. Runtime loop is over, so first close the libwebsockets context, and 
     ///    second, close all the backend socket fds.
     ///@todo detach signal?
     frontend_stop(backend.ws_context);
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     {   struct itemstruct*  dict_item;
 
         // Start at the front of the filedict linked-list
         dict_item = ((dict_t*)backend.filedict)->base;
         while (dict_item != NULL) {
-            if (dict_item->type == ITEM_CONN) {
+            if (dict_item->type == FILE_DS) {
                 close( ((conn_t*)dict_item->data)->fd_ds );
             }
             ///@note not sure if we actually need to close these, or if lws does it for us.
-            else if (dict_item->type == ITEM_WSPOLLFD) {
+            else if (dict_item->type == FILE_WS) {
                 close( ((struct pollfd*)dict_item->data)->fd );
             }
             dict_item = (struct itemstruct*)(dict_item->hh.next);
         }
     }
-    
+printf("%s %i\n", __FUNCTION__, __LINE__);
     backend_run_EXIT:
     switch (rc) {
         default:    
@@ -585,7 +610,7 @@ int backend_run(socklist_t* socklist,
 
 int conn_putmsg_outbound(void* conn_handle, void* data, size_t len) {
     ///@note backend_handle currently unused.  Might be used in the future.
-    conn_t*     conn    = conn_handle;
+    conn_t* conn = conn_handle;
     mq_msg_t* msg;
     
     if ((conn == NULL) || (data == NULL) || (len == 0)) {
@@ -659,7 +684,7 @@ int pollfd_open(void* backend_handle, struct pollfd* ws_pollfd) {
     backend = backend_handle;
     
     // Create a new ws pollfd entry based on the new client socket
-    newpollfd = (struct pollfd*)dict_new(&err, backend->filedict, ws_pollfd->fd, ITEM_WSPOLLFD);
+    newpollfd = (struct pollfd*)dict_new(&err, backend->filedict, ws_pollfd->fd, FILE_WS);
     if (err != 0) {
         if (newpollfd != NULL) {
             // this fd already exists in the filedict.  That's a problem that needs to be debugged
@@ -707,7 +732,7 @@ int pollfd_update(void* backend_handle, struct pollfd* ws_pollfd) {
     backend = backend_handle;
     
     // Create a new ws pollfd entry based on the new client socket
-    modpollfd = (struct pollfd*)dict_get(backend->filedict, ws_pollfd->fd, ITEM_WSPOLLFD);
+    modpollfd = (struct pollfd*)dict_get(backend->filedict, ws_pollfd->fd, FILE_WS);
     if (modpollfd == NULL) {
         printf("fd not found in filedict (fd = %i)\n", ws_pollfd->fd);
         return -1;
@@ -753,7 +778,7 @@ void* conn_open(void* backend_handle, void* ws_handle, const char* ws_name) {
     }
     
     // Create a new connection entry based on the new client socket
-    conn = (conn_t*)dict_new(&err, backend->filedict, fd_ds, ITEM_CONN);
+    conn = (conn_t*)dict_new(&err, backend->filedict, fd_ds, FILE_DS);
     if (err != 0) {
         if (conn != NULL) {
             // this fd already exists in the filedict.  That's a problem that needs to be debugged
