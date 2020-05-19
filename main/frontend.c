@@ -43,39 +43,121 @@ static const lws_retry_bo_t retry = {
 
 
 
+int frontend_cli_callback(  struct lws *wsi, 
+                            enum lws_callback_reasons reason, 
+                            void *user, 
+                            void *in, 
+                            size_t len      ) {
+/// Handles a raw client socket.  The purpose of this callback is to enqueue
+/// received messages for forwarding onto the associated websocket.
+/// The "user" pointer is the backend connection object (conn_t*).
+    void* backend   = lws_context_user(lws_get_context(wsi));
+    void* conn      = lws_get_opaque_user_data(wsi);
+    int rc = 0;
+    
+    switch (reason) {
+        //RAW mode connection RX
+        case LWS_CALLBACK_RAW_RX: {
+printf("%s LWS_CALLBACK_RAW_RX\n", __FUNCTION__);
+            if (len > 0) {
+                conn_putmsg_forweb(conn, in, len);
+            }
+        } break;
+        
+        //RAW mode connection is closing
+        case LWS_CALLBACK_RAW_CLOSE:
+printf("%s LWS_CALLBACK_RAW_CLOSE\n", __FUNCTION__);
+            conn_close(conn);   
+            conn_del(backend, conn);
+            break;
+        
+        //RAW mode connection may be written
+        case LWS_CALLBACK_RAW_WRITEABLE:
+printf("%s LWS_CALLBACK_RAW_WRITEABLE\n", __FUNCTION__);
+            while (conn_hasmsg_forlocal(conn)) {
+                mq_msg_t* msg;
+                int m;
+                
+                // Re-instate this callback on the next service loop in the event that 
+                // data cannot be written to it right now.
+                if (lws_partial_buffered(wsi) || lws_send_pipe_choked(wsi)) {
+                    lws_callback_on_writable(wsi);
+                    break;
+                }
+                
+                // Get the next message for this websocket.  Exit if no message.
+                msg = conn_getmsg_forlocal(conn);
+                if (msg == NULL)  {
+                    break;
+                }
+                
+                // Finally, write the message onto the raw socket.
+                ///@note We allowed for LWS_PRE in the payload via frontend_create_msg()
+                m = lws_write(wsi, msg->data + LWS_PRE, msg->size, LWS_WRITE_TEXT);
+                if (m < msg->size) {
+                    lwsl_err("ERROR %d writing to raw socket\n", m);
+                    rc = -1;
+                }
+                
+                msg_free(msg);
+            }
+            break;
+        
+        //RAW mode connection was adopted (equivalent to 'wsi created')
+        case LWS_CALLBACK_RAW_ADOPT:
+printf("%s LWS_CALLBACK_RAW_ADOPT\n", __FUNCTION__);
+            conn_open(conn);
+            break;
+        
+        //outgoing client RAW mode connection was connected
+        case LWS_CALLBACK_RAW_CONNECTED:
+printf("%s LWS_CALLBACK_RAW_CONNECTED\n", __FUNCTION__);
+            break;
+        
+        //RAW mode file was adopted (equivalent to 'wsi created')
+        case LWS_CALLBACK_RAW_ADOPT_FILE:
+printf("%s LWS_CALLBACK_RAW_ADOPT_FILE\n", __FUNCTION__);
+            break;
+    
+        //This is the indication the RAW mode file has something to read. 
+        //This doesn't actually do the read of the file and len is always 0... 
+        //your code should do the read having been informed there is something to read now.
+        case LWS_CALLBACK_RAW_RX_FILE: {
+printf("%s LWS_CALLBACK_RAW_RX_FILE\n", __FUNCTION__);
+            int size;
+            void* data;
+            size = conn_buffered_read(&data, backend, conn);
+            if (size > 0) {
+                conn_putmsg_forweb(conn, data, (size_t)size);
+            }
+        } break;
+    
+        //RAW mode file is writeable
+        case LWS_CALLBACK_RAW_WRITEABLE_FILE:
+printf("%s LWS_CALLBACK_RAW_WRITEABLE_FILE\n", __FUNCTION__);
+            break;
+        
+        // RAW mode wsi that adopted a file is closing
+        case LWS_CALLBACK_RAW_CLOSE_FILE:
+printf("%s LWS_CALLBACK_RAW_CLOSE_FILE\n", __FUNCTION__);
+            break;
+        
+        default: 
+printf("%s REASON=%i\n", __FUNCTION__, reason);
+            break;
+    }
+    
+    return rc;
+}
+
+
 int frontend_http_callback(  struct lws *wsi, 
                             enum lws_callback_reasons reason, 
                             void *user, 
                             void *in, 
                             size_t len) {
-/// Override the lws_callback_http_dummy() callback (default callback) for the
-/// subset of external polling handlers we need to handle uniquely.
-/// @note The "void* in" parameter will contain a struct pollfd* datatype.
-///       The "void* user" parameter will store the backend handle.
-    
-printf("%s %i\n", __FUNCTION__, __LINE__);
-printf("reason = %i\n", reason);
-    
-    /// @todo look into returning the value from conn_ws_...() functions
-    /// rather than just 0.
-    switch (reason) {
-        case LWS_CALLBACK_ADD_POLL_FD: 
-printf("%s %i\n", __FUNCTION__, __LINE__);
-            pollfd_open(user, (struct pollfd*)in);
-            return 0;
-        case LWS_CALLBACK_DEL_POLL_FD: 
-printf("%s %i\n", __FUNCTION__, __LINE__);
-            pollfd_close(user, (struct pollfd*)in);
-            return 0;
-        case LWS_CALLBACK_CHANGE_MODE_POLL_FD:
-printf("%s %i\n", __FUNCTION__, __LINE__);
-            pollfd_update(user, (struct pollfd*)in);
-            return 0;
-
-        default:
-            break;
-    }
-
+/// There could be an additional switch statement, here, that does additional
+/// work to what's available in the dummy function.
     return lws_callback_http_dummy(wsi, reason, user, in, len);
 }
 
@@ -91,14 +173,16 @@ int frontend_ws_callback(   struct lws *wsi,
             
 	struct per_session_data *pss;
 	struct per_vhost_data *vhd;
+    void* backend;
 	int m;
     int rc = 0;   
 
 printf("%s %i\n", __FUNCTION__, __LINE__);
 
     ///@todo make sure this wasn't as "Static" from demo app
-    pss = (struct per_session_data *)user;
-    vhd = (struct per_vhost_data *)lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
+    pss     = (struct per_session_data *)user;
+    vhd     = (struct per_vhost_data *)lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
+    backend = lws_context_user(lws_get_context(wsi)); // lws_context_user(vhd->context)
 
     ///@todo this operational switch needs to be mutexed
 
@@ -113,26 +197,37 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
 		vhd->vhost      = lws_get_vhost(wsi);
 		break;
 
-	case LWS_CALLBACK_ESTABLISHED:
+	case LWS_CALLBACK_ESTABLISHED: {
+        struct lws_client_connect_info cli_info;
+        
 		/// add ourselves to the list of live pss held in the vhd 
 		lws_ll_fwd_insert(pss, pss_list, vhd->pss_list);
 		pss->wsi = wsi;
         
         // Open a corresponding daemon client socket
-        pss->conn_handle = conn_open(lws_context_user(vhd->context), wsi, vhd->protocol->name);
+        ///@todo could/should the socket opening part be in the raw callback?
+        pss->conn_handle = conn_new(backend, wsi, vhd->protocol->name);
         
         ///@todo some form of error handling if conn_handle returns as NULL
         //if (pss->conn_handle == NULL) {
         //}
-		break;
+        
+        // Bind the connection to the lws service loop, and this vhost.
+        // conn_loadinfo() prepares the info data in the necessary way.
+        lws_client_connect_via_info(conn_loadinfo(&cli_info, pss->conn_handle, vhd->context));
+        
+    } break;
 
-	case LWS_CALLBACK_CLOSED:
+	case LWS_CALLBACK_CLOSED: {
 		/// remove our closing pss from the list of live pss 
         // Kill the corresponding daemon client socket
-        conn_close(lws_context_user(vhd->context), pss->conn_handle);
+        ///@todo could/should the socket closing part be in the raw callback?
+        //conn_close(pss->conn_handle);
+        
         // Kill the websocket
 		lws_ll_fwd_remove(struct per_session_data, pss_list, pss, vhd->pss_list);
-		break;
+        
+    } break;
 
 	case LWS_CALLBACK_SERVER_WRITEABLE: 
         /// This is the routine that actually writes to the websocket.
@@ -140,7 +235,7 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
         /// associated with this websocket.  It will consume messages from the
         /// daemon socket queue until it has no more or until the websocket is
         /// too busy to do so.
-        while (conn_hasmsg_outbound(pss->conn_handle)) {
+        while (conn_hasmsg_forweb(pss->conn_handle)) {
             mq_msg_t* msg;
             
             // Re-instate this callback on the next service loop in the event that 
@@ -151,7 +246,7 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
             }
             
             // Get the next message for this websocket.  Exit if no message.
-            msg = conn_getmsg_outbound(pss->conn_handle);
+            msg = conn_getmsg_forweb(pss->conn_handle);
             if (msg == NULL)  {
                 break;
             }
@@ -171,7 +266,7 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
     /// Put the message received from the the websocket onto its queue.
     /// This message will be written to corresponding daemon socket (ds).
 	case LWS_CALLBACK_RECEIVE:
-        conn_putmsg_inbound(pss->conn_handle, in, len);
+        conn_putmsg_forlocal(pss->conn_handle, in, len);
 		break;
 
 	default:
@@ -200,6 +295,8 @@ mq_msg_t* frontend_createmsg(void* in, size_t len) {
     return msg;
 }
 
+
+///@note this may be deprecated in the all-lws model
 void frontend_pendmsg(void* ws_handle) {
     struct lws* wsi = ws_handle;
     
@@ -258,10 +355,6 @@ void* frontend_start(void* backend_handle,
     if (context == NULL) {
         lwsl_err("lws init failed\n");
     }
-    
-    /// Run lws_service() in order to do a first pass on the HTTP Protocol-0.
-    /// Otherwise, backend won't have any fds to poll.
-    //lws_service(context, 0);
     
     return context;
 }

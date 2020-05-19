@@ -280,8 +280,14 @@ int wfedd(  const char* rsrcpath,
     
     struct lws_protocols* protocols;
     char* str_mountorigin;
-    const char* protocol_http = "http";
-    const char* hostname = "localhost";
+    
+    const char* hostname        = "localhost";
+    
+    ///@todo perhaps these protocol names should contain characters which
+    /// cannot be used in URIs or URLs.  This list is: <, >, #, %, "
+    const char* protocol_cli    = "CLI"
+    const char* protocol_http   = "http";
+    
 
     struct lws_http_mount mount = {
         .mount_next             = NULL,             // linked-list "next" 
@@ -309,8 +315,8 @@ int wfedd(  const char* rsrcpath,
         return -1;
     }
     
-    /// The "Protocol-0" is HTTP.  
-    // HTTP server protocol, first in the list
+    
+    /// The Protocol-0 is HTTP, and also a global callback if needed
     protocols[0].name                   = protocol_http;
     protocols[0].callback               = frontend_http_callback;
     protocols[0].per_session_data_size  = 0;
@@ -319,13 +325,22 @@ int wfedd(  const char* rsrcpath,
     protocols[0].user                   = NULL; ///@todo maybe needs to be backend_handle
     protocols[0].tx_packet_size         = 0;
     
+    /// The Protocol-1 is a raw protocol, used for handling client sockets.
+    protocols[1].name                   = protocol_cli;
+    protocols[1].callback               = frontend_cli_callback;
+    protocols[1].per_session_data_size  = 0;
+    protocols[1].rx_buffer_size         = 1024;
+    protocols[1].id                     = 0;
+    protocols[1].user                   = NULL; ///@todo maybe needs to be backend_handle
+    protocols[1].tx_packet_size         = 0;
+    
     // Each websocket protocol
     ///@todo some of these parameters may be changed
-    for (i=0, j=1; i<socklist->size; i++, j++) {
+    for (i=0, j=2; i<socklist->size; i++, j++) {
         protocols[j].name                   = socklist->map[i].websocket;
         protocols[j].callback               = frontend_ws_callback;
         protocols[j].per_session_data_size  = sizeof(struct per_session_data);
-        protocols[j].rx_buffer_size         = 128;
+        protocols[j].rx_buffer_size         = 1024; //128???
         protocols[j].id                     = 0;
         protocols[j].user                   = NULL; ///@todo maybe needs to be backend_handle
         protocols[j].tx_packet_size         = 0;

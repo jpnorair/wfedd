@@ -83,6 +83,25 @@ void socklist_deinit(socklist_t* socklist) {
 
 
 
+int sub_testsocket(const char* sockpath, int socktype) {
+/// Test if the socket_path argument is indeed a path to a socket.
+///@todo integrate socktype into the checks.
+    struct stat statdata;
+
+    if (stat(sockpath, &statdata) != 0) {
+        return -2;
+    }
+    if (S_ISSOCK(statdata.st_mode) == 0) {
+        return -3;
+    }
+    
+    return 0;
+}
+
+
+
+
+
 int socklist_addmap(socklist_t* socklist, const char* mapstr) {
     const char* ds;
     const char* ds_end;
@@ -93,6 +112,7 @@ int socklist_addmap(socklist_t* socklist, const char* mapstr) {
     char* dspath;
     char* wspath;
     int i;
+    int rc = 0;
     
     if (socklist == NULL) {
         return -1;
@@ -126,21 +146,25 @@ int socklist_addmap(socklist_t* socklist, const char* mapstr) {
     
     wspath  = calloc((ws_size + 1), sizeof(char));
     if (wspath == NULL) {
-        free(dspath);
-        return -4;
+        rc = -4;
+        goto socklist_addmap_TERM;
     }
     memcpy(wspath, ws, ws_size);
     
     ///@todo 3. Validate that the daemon socket exists and is of the right type.
+    rc = sub_testsocket(dspath, 0);
+    if (rc != 0) {
+        rc -= 5;
+        goto socklist_addmap_TERM;
+    }
     
     /// 4. Do insertion based on the name of the websocket.
     ///    Only one instance per websocket name is allowed.
     for (i=0; i<socklist->size; i++) {
         int cmp = strcmp(wspath, socklist->map[i].websocket);
         if (cmp == 0) {
-            free(wspath);
-            free(dspath);
-            return -5;
+            rc = -5;
+            goto socklist_addmap_TERM;
         }
         if (cmp < 0) {
             for (int j=(int)socklist->size; j>i; j--) {
@@ -156,8 +180,48 @@ int socklist_addmap(socklist_t* socklist, const char* mapstr) {
     socklist->map[i].l_socket   = dspath;
     socklist->map[i].websocket  = wspath;
     socklist->size++;
-    
     return 0;
+    
+    socklist_addmap_TERM:
+    free(wspath);
+    free(dspath);
+    return rc;
+}
+
+
+
+int socklist_newclient(sockmap_t** newclient, socklist_t* socklist, const char* ws_name) {
+    sockmap_t* clisock = NULL;
+    int test;
+    int newfd = -1;
+    
+    // Find the socket that matches the websocket mapping
+    clisock = socklist_search(socklist, ws_name);
+    if (clisock == NULL) {
+        goto socklist_newclient_EXIT;
+    }
+    
+    // Test the socket to make sure it is still active.  If it fails, we want
+    // to delete the dead socket from the socklist.
+    test = sub_testsocket(clisock->l_socket, clisock->l_type);
+    if (test != 0) {
+        ///@todo delete the dead socket and flag an error.
+        clisock = NULL;
+        goto socklist_newclient_EXIT;
+    }
+    
+    // Create a client socket of the resolved type.
+    ///@todo Right now we only support UNIX sockets.
+    newfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (newfd < 0) {
+        goto socklist_newclient_EXIT;
+    }
+
+    socklist_newclient_EXIT:
+    if (newclient != NULL) {
+        *newclient = clisock;
+    }
+    return newfd;
 }
 
 

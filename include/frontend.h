@@ -50,8 +50,9 @@
 struct per_session_data {
     struct per_session_data* pss_list;
     struct lws*             wsi;
-    //int                     last;               // the last message number we sent 
     void*                   conn_handle;        // connection handle (from backend data)
+    
+    //int                     last;               // the last message number we sent 
 };
 
 
@@ -63,10 +64,19 @@ struct per_vhost_data {
     struct lws_vhost*           vhost;
     const struct lws_protocols* protocol;
     struct per_session_data*    pss_list;   // linked-list of live pss
+    
     //msg_t                       amsg;       // the one pending message...
     //int                         current;    // the current message number we are caching
-    void* socket_conn;  //handle to local socket connection (backend)
 };
+
+
+
+int frontend_cli_callback(  struct lws *wsi, 
+                            enum lws_callback_reasons reason, 
+                            void *user, 
+                            void *in, 
+                            size_t len      );
+
 
 
 /** @brief LWS service callback for http/https frontend

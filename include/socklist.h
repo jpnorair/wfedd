@@ -55,8 +55,8 @@ int socklist_addmap(socklist_t* socklist, const char* mapstr);
 
 void socklist_deinit(socklist_t* socklist);
 
-
 sockmap_t* socklist_search(socklist_t* socklist, const char* ws_name);
 
+int socklist_newclient(sockmap_t** newclient, socklist_t* socklist, const char* ws_name);
 
 #endif

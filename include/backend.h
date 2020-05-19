@@ -53,24 +53,26 @@ int backend_run(socklist_t* socklist,
                 struct lws_protocols* protocols,
                 struct lws_http_mount* mount
                 );
+                
+
+void* conn_new(void* backend_handle, void* ws_handle, const char* ws_name);
+void conn_del(void* backend_handle, void* conn_handle);
+int conn_open(void* conn_handle);
+void conn_close(void* conn_handle);
+
+int conn_buffered_read(void** data, void* backend_handle, void* conn_handle);
+
+struct lws_client_connect_info*
+conn_loadinfo(struct lws_client_connect_info* info, void* conn_handle, void* context_handle);
 
 
-int pollfd_open(void* backend_handle, struct pollfd* ws_pollfd);
-int pollfd_close(void* backend_handle, struct pollfd* ws_pollfd);
-int pollfd_update(void* backend_handle, struct pollfd* ws_pollfd);
+int conn_putmsg_forweb(void* conn_handle, void* data, size_t len);
+mq_msg_t* conn_getmsg_forweb(void* conn_handle);
+bool conn_hasmsg_forweb(void* conn_handle);
 
-void* conn_open(void* backend_handle, void* ws_handle, const char* ws_name);
-void conn_close(void* backend_handle, void* conn_handle);
-
-
-int conn_putmsg_outbound(void* conn_handle, void* data, size_t len);
-mq_msg_t* conn_getmsg_outbound(void* conn_handle);
-bool conn_hasmsg_outbound(void* conn_handle);
-
-
-int conn_putmsg_inbound(void* conn_handle, void* data, size_t len);
-void* conn_getmsg_inbound(void* conn_handle, size_t* len);
-bool conn_hasmsg_inbound(void* conn_handle);
+int conn_putmsg_forlocal(void* conn_handle, void* data, size_t len);
+mq_msg_t* conn_getmsg_forlocal(void* conn_handle);
+bool conn_hasmsg_forlocal(void* conn_handle);
 
 
 
