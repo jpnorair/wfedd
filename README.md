@@ -1,8 +1,42 @@
-# wfedd
+# About wfedd
 
-"wfedd" is short for "Web Front-End for Daemons Daemon." It is a POSIX-C daemon that will bridge one or more local sockets to websocket mount-points.  
+`wfedd` is short for "Web Front-End for Daemons Daemon." It is a POSIX-C daemon that will bridge one or more local client sockets as websockets, served together with a static HTML5/JS website.  Thus, you can transparently access APIs to other daemons running on the server -- which themselves expose arbitrary client sockets -- via a webpage using websockets.  `wfedd` is quite a bit more resource efficient than any other method for doing this, so it is suitable for small IoT devices.
 
-wfedd uses libwebsockets, and it will create a very minimal webserver instance capable of serving static content.  Said static content is intended to be an HTML/JS front-end that interfaces with the websockets bridged by wfedd, although wfedd is permissively open sourced in case you have some alternative, creative usage in mind.
+[libwebsockets](https://libwebsockets.org) (LWS) is heavily used, including its websocket and static http server implementations.  A really basic demo page is included in the source distribution.  `wfedd` adds the management and bridging fuctionality between the HTTP/WS server and local client sockets running on the server.
+
+`wfedd` is permissively open sourced via BSD 2-clause in case you have some alternative, creative usage in mind.
+
+### Intended Usage
+
+`wfedd` was designed for embedded linux platforms, especially [OpenWRT](https://openwrt.org) (but not limited to this). As stated, the goal is to serve a static, HTML5/JS single-page-app (SPA) with websockets that bridge to client sockets interfacing with daemons/services running on the server.  A typical application would be a self-hosted configuration website for an IoT product.
+
+![Block Diagram](docs/diagram.png)
+
+### Why I made wfedd
+
+If you have a POSIX machine with plenty of resources, there are other options which are more mature, such as [lighttpd](https://www.lighttpd.net) (although some additional adaptation is required).  Lighttpd, and even [duda](https://github.com/monkey/duda), were deemed to be more complex than necessary for the simple objective of serving a static, HTML5/JS single-page-app (SPA) with websockets.
+
+##### Resource Constraints
+
+The design target platform is an [MT7688](https://labs.mediatek.com/en/chipset/MT7688)-based module such as [AI7688H](http://www.acsip.com.tw/index.php?action=products-detail&fid1=11&fid2=&fid3=&id=29), which has 128MB of RAM to store both data and program code.  Many MT7688 modules have half this (64MB), so it is important for `wfedd` to be compact in memory usage and compact in program size.  
+
+##### Performance Objectives
+
+The design goal is for `wfedd` to bridge a dozen or so daemon client sockets to at least five simultaneously connected vhosts.  Preliminary testing seems to indicate throughput will not be a bottleneck for this specification.
+
+##### Efficiency Objectives
+
+MT7688 devices are ~580 MHz 32 bit RISC CPUs, so compute is more plentiful than memory, but nonetheless we are also interested in making `wfedd` as performant as possible.  More performant code is more efficient and leads to longer runtime on a battery charge.
+
+### Future Improvements
+
+`wfedd` is in alpha state right now, so the first step is just to get it stable and thoroughly tested on a number of platforms.  Beyond that, here is my backlog:
+
+* Determine if it's possible to use libwebsockets integrated proxying features, and implement them if so.
+* **Support for ubus**: `wfedd` currently works only with UNIX Domain Sockets on the daemon/client side.  OpenWRT uses ubus for a lot of IPC, so it would be good to add support for it.
+* **Security**: `wfedd` serves only static content, so that takes care of a lot of this topic, but security wasn't the primary concern for the Alpha release.  `wfedd` does support TLS, but some scrutiny is probably wise in hardening the way it is deployed.
+
+
 
 ## Building wfedd
 
@@ -76,6 +110,6 @@ $ wfedd -S /opt/sockets/otdb:otdb -S /opt/sockets/otter:otter
 
 ## Version History
 
-### 20 Feb 2020
+### 21 May 2020
 
-wfedd is under development
+First Alpha release uploaded.
