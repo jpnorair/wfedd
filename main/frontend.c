@@ -74,6 +74,7 @@ int frontend_cli_callback(  struct lws *wsi,
             int size;
             void* data;
             size = conn_readraw_local(&data, backend, conn);
+            DEBUG_PRINTF("reading msg frome otdb: %s\n", (char*)data);
             if (size > 0) {
                 conn_putmsg_forweb(conn, data, (size_t)size);
                 lws_callback_on_writable(lws_get_parent(wsi));
@@ -91,6 +92,7 @@ int frontend_cli_callback(  struct lws *wsi,
                     break;
                 }
                 // Finally, write the message onto the raw socket and free it.
+                DEBUG_PRINTF("writing msg to otdb: %s\n", (char*)msg->data);
                 conn_writeraw_local(backend, conn, msg->data, msg->size);
                 msg_free(msg);
             }
@@ -137,12 +139,9 @@ int frontend_ws_callback(   struct lws *wsi,
 	int m;
     int rc = 0;   
 
-    ///@todo make sure this wasn't as "Static" from demo app
     pss     = (struct per_session_data *)user;
     vhd     = (struct per_vhost_data *)lws_protocol_vh_priv_get(lws_get_vhost(wsi), lws_get_protocol(wsi));
     backend = lws_context_user(lws_get_context(wsi)); // lws_context_user(vhd->context)
-
-    ///@todo this operational switch needs to be mutexed
 
 	switch (reason) {
 	case LWS_CALLBACK_PROTOCOL_INIT:
@@ -223,7 +222,8 @@ int frontend_ws_callback(   struct lws *wsi,
             // Finally, write the message onto the websocket.
             ///@note We allowed for LWS_PRE in the payload via creation of the data
             ///@todo have a specifier to select BINARY mode or TEXT
-            m = lws_write(wsi, msg->data+LWS_PRE, msg->size, LWS_WRITE_TEXT);     //LWS_WRITE_BINARY
+            DEBUG_PRINTF("writing msg to ws: %s\n", (char*)msg->data+LWS_PRE);
+            m = lws_write(wsi, (uint8_t*)msg->data+LWS_PRE, msg->size, LWS_WRITE_TEXT);     //LWS_WRITE_BINARY
             if (m < msg->size) {
                 lwsl_err("ERROR %d writing to ws\n", m);
                 rc = -1;
@@ -237,6 +237,7 @@ int frontend_ws_callback(   struct lws *wsi,
     /// This message will be written to corresponding daemon socket (ds).
 	case LWS_CALLBACK_RECEIVE:
         DEBUG_PRINTF("%s LWS_CALLBACK_RECEIVE\n", __FUNCTION__);
+        DEBUG_PRINTF("reading msg from ws: %s\n", (char*)in);
         conn_putmsg_forlocal(pss->conn_handle, in, len);
         lws_callback_on_writable(pss->lwsi);
 		break;
@@ -258,7 +259,7 @@ mq_msg_t* frontend_createmsg(void* in, size_t len) {
     if ((in != NULL) && (len != 0)) {
         msg = msg_new(len + LWS_PRE);
         if (msg != NULL) {
-            memcpy((char*)msg->data + LWS_PRE, in, len);
+            memcpy((uint8_t*)msg->data+LWS_PRE, in, len);
         }
         else {
             ///@todo handle some error
@@ -267,16 +268,6 @@ mq_msg_t* frontend_createmsg(void* in, size_t len) {
     
     return msg;
 }
-
-
-///@note this may be deprecated in the all-lws model
-//void frontend_pendmsg(void* ws_handle) {
-//    struct lws* wsi = ws_handle;
-//    
-//    if (wsi != NULL) {
-//        lws_callback_on_writable(wsi);
-//    }
-//}
 
 
 

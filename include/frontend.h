@@ -118,13 +118,6 @@ int frontend_ws_callback(   struct lws *wsi,
 mq_msg_t* frontend_createmsg(void* in, size_t len);
 
 
-/** @brief instructs the supplied websocket that there is a writable message
- *  @retval none
- *
- */
-void frontend_pendmsg(void* ws_handle);
-
-
 
 /** @brief Starts the frontend (libwebsockets)
  *  @retval (int)
