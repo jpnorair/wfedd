@@ -55,15 +55,17 @@ int backend_run(socklist_t* socklist,
                 );
                 
 
-void* conn_new(void* backend_handle, void* ws_handle, const char* ws_name);
+void* conn_new(void* backend_handle, const char* ws_name);
 void conn_del(void* backend_handle, void* conn_handle);
 int conn_open(void* conn_handle);
 void conn_close(void* conn_handle);
 
-int conn_buffered_read(void** data, void* backend_handle, void* conn_handle);
+int conn_readraw_local(void** data, void* backend_handle, void* conn_handle);
+int conn_writeraw_local(void* backend_handle, void* conn_handle, void* data, size_t len);
 
-struct lws_client_connect_info*
-conn_loadinfo(struct lws_client_connect_info* info, void* conn_handle, void* context_handle);
+lws_adoption_type conn_get_adoptiontype(void* conn_handle);
+int conn_get_descriptor(void* conn_handle);
+const char* conn_get_protocolname(void* conn_handle);
 
 
 int conn_putmsg_forweb(void* conn_handle, void* data, size_t len);

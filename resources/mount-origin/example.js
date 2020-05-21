@@ -1,6 +1,5 @@
 
-function get_appropriate_ws_url(extra_url)
-{
+function get_appropriate_ws_url(extra_url) {
 	var pcol;
 	var u = document.URL;
 
@@ -25,8 +24,7 @@ function get_appropriate_ws_url(extra_url)
 	return pcol + u[0] + "/" + extra_url;
 }
 
-function new_ws(urlpath, protocol)
-{
+function new_ws(urlpath, protocol) {
 	return new WebSocket(urlpath, protocol);
 }
 
@@ -35,34 +33,33 @@ document.addEventListener("DOMContentLoaded", function() {
 	var ws = new_ws(get_appropriate_ws_url(""), "otdb");
 	try {
 		ws.onopen = function() {
-		    document.getElementById("path").disabled = 0;
-			document.getElementById("req").disabled = 0;
-			document.getElementById("send").disabled = 0;
+		    document.getElementById("p").disabled = 0;
+			document.getElementById("q").disabled = 0;
+			document.getElementById("s").disabled = 0;
 		};
 	
-		ws.onmessage =function got_packet(msg) {
-			document.getElementById("resp").value =
-				document.getElementById("resp").value + msg.data + "\n";
-			document.getElementById("resp").scrollTop =
-				document.getElementById("resp").scrollHeight;
+		ws.onmessage = function got_packet(msg) {
+			document.getElementById("r").value =
+				document.getElementById("r").value + msg.data + "\n";
+			document.getElementById("r").scrollTop =
+				document.getElementById("r").scrollHeight;
 		};
 	
-		ws.onclose = function(){
-		    document.getElementById("path").disabled = 1;
-			document.getElementById("req").disabled = 1;
-			document.getElementById("send").disabled = 1;
+		ws.onclose = function() {
+		    document.getElementById("p").disabled = 1;
+			document.getElementById("q").disabled = 1;
+			document.getElementById("s").disabled = 1;
 		};
 	} catch(exception) {
 		alert("<p>Error " + exception);  
 	}
 	
-	function sendmsg()
-	{
-		ws.send(document.getElementById("req").value);
-		document.getElementById("req").value = "";
+	function sendmsg() {
+		ws.send(document.getElementById("q").value);
+		document.getElementById("q").value = "";
 	}
 	
-	document.getElementById("send").addEventListener("click", sendmsg);
+	document.getElementById("s").addEventListener("click", sendmsg);
 	
 }, false);
 

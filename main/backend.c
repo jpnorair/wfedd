@@ -115,10 +115,8 @@ typedef struct {
 typedef struct cs {
     int         fd_ds;
     sockmap_t*  sock_handle;
-    void*       ws_handle;
     mq_t        mqweb;
     mq_t        mqlocal;
-    struct sockaddr_un addr;
 } conn_t;
 
 //typedef enum {
@@ -326,186 +324,6 @@ void* dict_get(void* handle, int id) {
 
 
 
-/// ----------- SUBROUTINES --------------
-
-/*
-void sub_remap_innerloop(backend_t* backend) {
-/// Remap the pollfds array based on a revised filedict
-    struct itemstruct*  dict_item;
-    int i = 0;
-    
-printf("%s %i\n", __FUNCTION__, __LINE__);
-    // Start at the front of the filedict linked-list
-    dict_item = ((dict_t*)backend->filedict)->base;
-    
-    // Move through the list until reaching a NULL item (the end of it).
-    // load the updated filedict information into the backend fds array
-    while (dict_item != NULL) {
-        if (dict_item->type == FILE_DS) {
-            backend->fds[i].fd      = ((conn_t*)dict_item->data)->fd_ds;
-            backend->fds[i].events  = (POLLIN | POLLNVAL | POLLHUP);
-        }
-        else {
-            backend->fds[i] = *((struct pollfd*)dict_item->data);
-        }
-        dict_item = (struct itemstruct*)(dict_item->hh.next);
-        i++;
-    }
-    
-    backend->fdsparam.active        = i;
-    backend->fdsparam.remap_pended  = true;
-}
-
-
-int sub_remap_withadd(backend_t* backend) {
-    int rc = 0;
-    
-    if (backend->fds == NULL) {
-        return -1;
-    }
-
-    // Reallocate the fds if that is necessary
-    // Allocation is done in chunks of size = backend->fdsparam.group
-    ///@note sub_remap_innerloop() will reload the filedict information into
-    ///      backend->fds
-    if (backend->fdsparam.total <= backend->fdsparam.active) {
-        struct pollfd*  fds;
-        backend->fdsparam.total = backend->fdsparam.active + backend->fdsparam.group;
-        
-        fds = calloc(backend->fdsparam.total, sizeof(struct pollfd));
-        if (fds == NULL) {
-            rc = -2;
-            goto backend_conn_add_EXIT;
-        }
-        
-        // Free the old data.  It will get reloaded in sub_remap_innerloop().
-        free(backend->fds);
-        backend->fds = fds;
-    }
-    
-    backend->fdsparam.active += 1;
-    sub_remap_innerloop(backend);
-    
-    backend_conn_add_EXIT:
-    return rc;
-}
-
-
-int sub_remap_withdel(backend_t* backend) {
-    int rc = 0;
-    
-    if (backend->fds == NULL) {
-        return -1;
-    }
-    
-    if (backend->fdsparam.active >= 1) {
-        backend->fdsparam.active--;
-        sub_remap_innerloop(backend);
-    }
-    
-    return rc;
-}
-*/
-/// End of SUBROUTINES
-/// --------------------------------------
-
-
-
-
-/// ----------- DEPRECATED --------------
-/*
-void* poll_unix(void* args) {
-    backend_t* backend  = args;
-    uint8_t* readbuf;
-    int ready_fds;
-
-    // Read buffer is allocated to a certain size dictated at wfedd startup
-    readbuf = malloc(backend->bufsize * sizeof(uint8_t));
-    if (readbuf == NULL) {
-        ///@todo global error
-        goto poll_unix_TERM;
-    }
-
-    // Main operating Loop
-    poll_unix_MAIN:
-    backend->fdsparam.remap_pended = false;
-
-    ready_fds = poll(backend->fds, backend->fdsparam.active, backend->fdsparam.wait_us/1000 );
-    if (ready_fds < 0) {
-printf("%s %i\n", __FUNCTION__, __LINE__);
-        // poll() has been interrupted.
-        // This can happen if the thread is cancelled.
-        goto poll_unix_TERM;
-    }
-    
-    if (ready_fds == 0) {
-printf("%s %i\n", __FUNCTION__, __LINE__);
-printf("backend->irq = %i\n", backend->irq);
-        // poll() has timed-out.
-        // - This is a routine service interval.
-        // - Check the backend status flag and take appropriate actions.
-        switch (backend->irq) {
-            case BIRQ_NONE:     goto poll_unix_MAIN;
-            case BIRQ_GLOBAL:   goto poll_unix_TERM;
-            default:            goto poll_unix_TERM;
-        }
-    }
-    
-    // Go through the fd array and service all fds with pending data
-    // The first operation is lws_service_fd(), which is part of libwebsockets.
-    // It will deal with any fd that has a websocket on it, and then it will
-    // set the revents of that pollfd to zero.
-    for (int i=0; i<backend->fdsparam.active; i++) {
-
-printf("%s %i\n", __FUNCTION__, __LINE__);
-printf("fd = %i\n", backend->fds[i].fd);
-        // Handle websockets.  Websockets (the frontend) will open or close
-        // client connections to backend daemons as they open or close, so we
-        // need to consider that the pollfd array will change.  That's what
-        // remap_pended flag is for.
-        lws_service_fd(backend->ws_context, &(backend->fds[i]));
-        if (backend->fdsparam.remap_pended) {
-            goto poll_unix_MAIN;
-        }
-    
-        // Websocket case has been handled above.  If FD was a websocket, now
-        // the revents will be 0.  So, if FD revents is nonzero, then there's 
-        // a daemon cilent socket that has something to handle.
-        if (backend->fds[i].revents == POLLIN) {
-            ssize_t bytes_in;
-            conn_t* conn;
-            
-            // Conn object contains the link to the websocket frontend.
-            // Forward the data on this client socket to the websocket.
-            conn = (conn_t*)dict_get(backend->filedict, backend->fds[i].fd, FILE_DS);
-            if (conn != NULL) {
-                bytes_in = read(backend->fds[i].fd, readbuf, backend->bufsize);
-                if (frontend_createmsg(readbuf, bytes_in) != NULL) {
-                    frontend_pendmsg(conn->ws_handle);
-                }
-            }
-        }
-        
-        // FD is not a websocket (it is daemon client) and does not have new data.
-        // We consider this to mean that the daemon client socket has dropped.
-        // As a result, we close this connection.
-        else if (backend->fds[i].revents != 0) {
-            ///@todo drop the corresponding websocket and propagate some error to the client
-            close(backend->fds[i].fd);
-            dict_del(backend->filedict, backend->fds[i].fd);
-            sub_remap_withdel(backend);
-            goto poll_unix_MAIN;
-        }
-    }
-
-    poll_unix_TERM:
-    return NULL;
-}
-
-*/
-
-/// End of DEPRECATED
-/// --------------------------------------
 
 
 
@@ -599,7 +417,7 @@ int backend_run(socklist_t* socklist,
         lws_rc = lws_service(backend.ws_context, 0);
     }
     
-    backend_run_STOP:
+    
 printf("%s %i\n", __FUNCTION__, __LINE__);
     /// 5. Runtime loop is over, so first close the libwebsockets context, and 
     ///    second, close all the backend socket fds.
@@ -634,46 +452,43 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
 
 
 
-
-
-int sub_putmsg(mq_t* mq, void* data, size_t len) {
+int conn_putmsg_forweb(void* conn_handle, void* data, size_t len) {
+printf("%s %i\n", __FUNCTION__, __LINE__);
+    conn_t* conn;
     mq_msg_t* msg;
-    
-    if ((data == NULL) || (len == 0)) {
+
+    if ((conn_handle == NULL) || (data == NULL) || (len == 0)) {
         return -1;
     }
     
+    conn = conn_handle;
     msg = frontend_createmsg(data, len);
     if (msg == NULL) {
         return -2;
     }
-
-    mq_putmsg(mq, msg);
+    
+    mq_putmsg(&conn->mqweb, msg);
     return 0;
-}
-
-
-int conn_putmsg_forweb(void* conn_handle, void* data, size_t len) {
-printf("%s %i\n", __FUNCTION__, __LINE__);
-    if (conn_handle) {
-        return sub_putmsg(&(((conn_t*)conn_handle)->mqweb), data, len);
-    }
-    return -1;
 }
 
 int conn_putmsg_forlocal(void* conn_handle, void* data, size_t len) {
 printf("%s %i\n", __FUNCTION__, __LINE__);
-//    conn_t* conn = conn_handle;
-//    int     rc;
-//    if ((conn == NULL) || (data == NULL) || (len == 0)) {
-//        return -1;
-//    }
-//    rc = (int)write(conn->fd_ds, data, len);
-//    return rc;
-    if (conn_handle) {
-        return sub_putmsg(&(((conn_t*)conn_handle)->mqlocal), data, len);
+    conn_t* conn;
+    mq_msg_t* msg;
+
+    if ((conn_handle == NULL) || (data == NULL) || (len == 0)) {
+        return -1;
     }
-    return -1;
+
+    conn = conn_handle;
+    msg = msg_new(len);
+    if (msg == NULL) {
+        return -2;
+    }
+    
+    memcpy((void*)msg->data, data, len);
+    mq_putmsg(&conn->mqlocal, msg);
+    return 0;
 }
 
 
@@ -721,14 +536,14 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
 
 
 
-void* conn_new(void* backend_handle, void* ws_handle, const char* ws_name) {
+void* conn_new(void* backend_handle, const char* ws_name) {
     backend_t*  backend = backend_handle;
     conn_t*     conn    = NULL;
     sockmap_t*  lsock   = NULL;
     int fd_ds;
     int err;
 
-    if ((backend_handle == NULL) || (ws_handle == NULL) || (ws_name == NULL)) {
+    if ((backend_handle == NULL) || (ws_name == NULL)) {
         return NULL;
     }
 
@@ -737,7 +552,7 @@ void* conn_new(void* backend_handle, void* ws_handle, const char* ws_name) {
     if (fd_ds < 0) {
         goto conn_new_TERM1;
     }
-    
+
     // Create a new connection entry based on the new client socket
     conn = (conn_t*)dict_new(&err, backend->filedict, fd_ds);
     if (err != 0) {
@@ -747,14 +562,11 @@ void* conn_new(void* backend_handle, void* ws_handle, const char* ws_name) {
         }
         goto conn_new_TERM2;
     }
-    conn->fd_ds             = fd_ds;
-    conn->sock_handle       = lsock;
-    conn->ws_handle         = ws_handle;
-    conn->addr.sun_family   = AF_UNIX;
-    snprintf(conn->addr.sun_path, UNIX_PATH_MAX, "%s", lsock->l_socket);
+
+    conn->fd_ds         = fd_ds;
+    conn->sock_handle   = lsock;
     mq_init(&conn->mqweb);
     mq_init(&conn->mqlocal);
-    
     return conn;
     
     // De-allocate on failures
@@ -784,7 +596,10 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
 int conn_open(void* conn_handle) {
 /// Used by frontend when a websocket opens a client connection.
 printf("%s %i\n", __FUNCTION__, __LINE__);
+    int rc;
     conn_t* conn;
+    struct sockaddr_un addr;
+    
     if (conn_handle == NULL) {
         return -1;
     }
@@ -792,7 +607,11 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
     
     // Open a connection to the client socket
     ///@todo the connection procedure could be different for different conn types
-    return connect(conn->fd_ds, (struct sockaddr *)&conn->addr, sizeof(struct sockaddr_un));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, conn->sock_handle->l_socket, UNIX_PATH_MAX);
+    
+    rc = connect(conn->fd_ds, (struct sockaddr *)&addr, sizeof(struct sockaddr_un));
+    return rc;
 }
 
 
@@ -811,7 +630,7 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
 
 
 
-int conn_buffered_read(void** data, void* backend_handle, void* conn_handle) {
+int conn_readraw_local(void** data, void* backend_handle, void* conn_handle) {
 /// returns the number of bytes read, or negative on error.
 /// "data" parameter stores a void* output
 /// backend_handle is needed to locate the read buffer
@@ -835,24 +654,53 @@ int conn_buffered_read(void** data, void* backend_handle, void* conn_handle) {
 
 
 
+int conn_writeraw_local(void* backend_handle, void* conn_handle, void* data, size_t len) {
+/// returns the number of bytes read, or negative on error.
+/// "data" parameter stores a void* output
+/// backend_handle is needed to locate the read buffer
+/// conn_handle is needed to determine the type of read to be done.
+    backend_t* backend;
+    conn_t* conn;
 
-struct lws_client_connect_info* 
-conn_loadinfo(struct lws_client_connect_info* info, void* conn_handle, void* context_handle) {
-    conn_t* conn = conn_handle;
-    
-    if ((info == NULL) || (conn_handle == NULL) || (context_handle == NULL)) {
-        return NULL;
+    if ((data == NULL) || (len == 0) || (backend_handle == NULL) || (conn_handle == NULL)) {
+        return -1;
     }
-
-    // Creat the info block.  Default values are always 0/NULL.
-    bzero(info, sizeof(struct lws_client_connect_info));
-    info->context               = context_handle;
-    info->local_protocol_name   = "CLI";
-    info->method                = "RAW";
-    info->opaque_user_data      = conn;
-    info->parent_wsi            = conn->ws_handle;
-
-    return info;
+    backend = backend_handle;
+    conn    = conn_handle;
+    
+    ///@todo currently there is only one type of write, via write()
+    return (int)write(conn->fd_ds, data, len);
 }
 
 
+
+lws_adoption_type conn_get_adoptiontype(void* conn_handle) {
+    lws_adoption_type type;
+    //conn_t* conn;
+    if (conn_handle) {
+        ///@todo there's only one type of conn at this moment.
+        //conn = conn_handle;
+        type = LWS_ADOPT_RAW_FILE_DESC;
+    }
+    else {
+        type = 0;
+    }
+    return type;
+}
+
+
+int conn_get_descriptor(void* conn_handle) {
+    conn_t* conn;
+    if (conn_handle) {
+        ///@todo there's only one type of conn at this moment.
+        conn = conn_handle;
+        return conn->fd_ds;
+    }
+    return -1;
+}
+
+
+const char* conn_get_protocolname(void* conn_handle) {
+    static const char* pname = "CLI";
+    return pname;
+}

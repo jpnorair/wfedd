@@ -285,7 +285,7 @@ int wfedd(  const char* rsrcpath,
     
     ///@todo perhaps these protocol names should contain characters which
     /// cannot be used in URIs or URLs.  This list is: <, >, #, %, "
-    const char* protocol_cli    = "CLI"
+    const char* protocol_cli    = "CLI";
     const char* protocol_http   = "http";
     
 
@@ -310,7 +310,7 @@ int wfedd(  const char* rsrcpath,
     };
     
     ///1. Create the protocol list array
-    protocols = calloc(2+socklist->size, sizeof(struct lws_protocols));
+    protocols = calloc( 2 + socklist->size + 1, sizeof(struct lws_protocols));
     if (protocols == NULL) {
         return -1;
     }
@@ -329,7 +329,7 @@ int wfedd(  const char* rsrcpath,
     protocols[1].name                   = protocol_cli;
     protocols[1].callback               = frontend_cli_callback;
     protocols[1].per_session_data_size  = 0;
-    protocols[1].rx_buffer_size         = 1024;
+    protocols[1].rx_buffer_size         = 0;
     protocols[1].id                     = 0;
     protocols[1].user                   = NULL; ///@todo maybe needs to be backend_handle
     protocols[1].tx_packet_size         = 0;
@@ -337,6 +337,7 @@ int wfedd(  const char* rsrcpath,
     // Each websocket protocol
     ///@todo some of these parameters may be changed
     for (i=0, j=2; i<socklist->size; i++, j++) {
+printf("new protocol = %s\n", socklist->map[i].websocket);
         protocols[j].name                   = socklist->map[i].websocket;
         protocols[j].callback               = frontend_ws_callback;
         protocols[j].per_session_data_size  = sizeof(struct per_session_data);

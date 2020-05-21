@@ -32,6 +32,10 @@
 #include <signal.h>
 
 
+/// 
+
+
+
 #if defined(LWS_HAS_RETRYPOLICY)
 ///@note this feature is somewhat rare among LWS library builds
 static const lws_retry_bo_t retry = {
@@ -54,59 +58,25 @@ int frontend_cli_callback(  struct lws *wsi,
     void* backend   = lws_context_user(lws_get_context(wsi));
     void* conn      = lws_get_opaque_user_data(wsi);
     int rc = 0;
-    
+  
     switch (reason) {
         //RAW mode connection RX
-        case LWS_CALLBACK_RAW_RX: {
-printf("%s LWS_CALLBACK_RAW_RX\n", __FUNCTION__);
-            if (len > 0) {
-                conn_putmsg_forweb(conn, in, len);
-            }
-        } break;
+        case LWS_CALLBACK_RAW_RX: 
+            break;
         
         //RAW mode connection is closing
         case LWS_CALLBACK_RAW_CLOSE:
 printf("%s LWS_CALLBACK_RAW_CLOSE\n", __FUNCTION__);
-            conn_close(conn);   
-            conn_del(backend, conn);
             break;
         
         //RAW mode connection may be written
         case LWS_CALLBACK_RAW_WRITEABLE:
 printf("%s LWS_CALLBACK_RAW_WRITEABLE\n", __FUNCTION__);
-            while (conn_hasmsg_forlocal(conn)) {
-                mq_msg_t* msg;
-                int m;
-                
-                // Re-instate this callback on the next service loop in the event that 
-                // data cannot be written to it right now.
-                if (lws_partial_buffered(wsi) || lws_send_pipe_choked(wsi)) {
-                    lws_callback_on_writable(wsi);
-                    break;
-                }
-                
-                // Get the next message for this websocket.  Exit if no message.
-                msg = conn_getmsg_forlocal(conn);
-                if (msg == NULL)  {
-                    break;
-                }
-                
-                // Finally, write the message onto the raw socket.
-                ///@note We allowed for LWS_PRE in the payload via frontend_create_msg()
-                m = lws_write(wsi, msg->data + LWS_PRE, msg->size, LWS_WRITE_TEXT);
-                if (m < msg->size) {
-                    lwsl_err("ERROR %d writing to raw socket\n", m);
-                    rc = -1;
-                }
-                
-                msg_free(msg);
-            }
             break;
         
         //RAW mode connection was adopted (equivalent to 'wsi created')
         case LWS_CALLBACK_RAW_ADOPT:
 printf("%s LWS_CALLBACK_RAW_ADOPT\n", __FUNCTION__);
-            conn_open(conn);
             break;
         
         //outgoing client RAW mode connection was connected
@@ -126,20 +96,34 @@ printf("%s LWS_CALLBACK_RAW_ADOPT_FILE\n", __FUNCTION__);
 printf("%s LWS_CALLBACK_RAW_RX_FILE\n", __FUNCTION__);
             int size;
             void* data;
-            size = conn_buffered_read(&data, backend, conn);
+            size = conn_readraw_local(&data, backend, conn);
             if (size > 0) {
                 conn_putmsg_forweb(conn, data, (size_t)size);
+                lws_callback_on_writable(lws_get_parent(wsi));
             }
         } break;
     
         //RAW mode file is writeable
         case LWS_CALLBACK_RAW_WRITEABLE_FILE:
 printf("%s LWS_CALLBACK_RAW_WRITEABLE_FILE\n", __FUNCTION__);
+            while (conn_hasmsg_forlocal(conn)) {
+                mq_msg_t* msg;
+                // Get the next message for this websocket.  Exit if no message.
+                msg = conn_getmsg_forlocal(conn);
+                if (msg == NULL)  {
+                    break;
+                }
+                // Finally, write the message onto the raw socket and free it.
+                conn_writeraw_local(backend, conn, msg->data, msg->size);
+                msg_free(msg);
+            }
             break;
         
         // RAW mode wsi that adopted a file is closing
         case LWS_CALLBACK_RAW_CLOSE_FILE:
 printf("%s LWS_CALLBACK_RAW_CLOSE_FILE\n", __FUNCTION__);
+            conn_close(conn);   
+            conn_del(backend, conn);
             break;
         
         default: 
@@ -170,14 +154,11 @@ int frontend_ws_callback(   struct lws *wsi,
                             void *user, 
                             void *in, 
                             size_t len      ) {
-            
 	struct per_session_data *pss;
 	struct per_vhost_data *vhd;
     void* backend;
 	int m;
     int rc = 0;   
-
-printf("%s %i\n", __FUNCTION__, __LINE__);
 
     ///@todo make sure this wasn't as "Static" from demo app
     pss     = (struct per_session_data *)user;
@@ -198,38 +179,49 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
 		break;
 
 	case LWS_CALLBACK_ESTABLISHED: {
-        struct lws_client_connect_info cli_info;
+        lws_adoption_type type;
+        lws_sock_file_fd_type desc;
+        const char* pname;
         
-		/// add ourselves to the list of live pss held in the vhd 
-		lws_ll_fwd_insert(pss, pss_list, vhd->pss_list);
-		pss->wsi = wsi;
+        // Create a connection object to bridge the web and local worlds
+        pss->conn_handle = conn_new(backend, vhd->protocol->name);
+        if (pss->conn_handle == NULL) {
+            ///@todo Some sort of error reporting
+            rc = -1;
+        }
+        else {
+            // add ourselves to the list of live pss held in the vhd 
+            lws_ll_fwd_insert(pss, pss_list, vhd->pss_list);
+            //pss->wsi = wsi;
         
-        // Open a corresponding daemon client socket
-        ///@todo could/should the socket opening part be in the raw callback?
-        pss->conn_handle = conn_new(backend, wsi, vhd->protocol->name);
+            // open the connection -- must be accepted to be adopted
+            conn_open(pss->conn_handle);
         
-        ///@todo some form of error handling if conn_handle returns as NULL
-        //if (pss->conn_handle == NULL) {
-        //}
-        
-        // Bind the connection to the lws service loop, and this vhost.
-        // conn_loadinfo() prepares the info data in the necessary way.
-        lws_client_connect_via_info(conn_loadinfo(&cli_info, pss->conn_handle, vhd->context));
-        
+            // Adopt the connection to the lws service loop, and this vhost.
+            desc.filefd = conn_get_descriptor(pss->conn_handle);
+            type        = conn_get_adoptiontype(pss->conn_handle);
+            pname       = conn_get_protocolname(pss->conn_handle);
+            pss->lwsi   = lws_adopt_descriptor_vhost(vhd->vhost, type, desc, pname, wsi);
+            
+            // This will enable access of the conn handle from the child wsi
+            lws_set_opaque_user_data(pss->lwsi, pss->conn_handle);
+        }
     } break;
 
 	case LWS_CALLBACK_CLOSED: {
-		/// remove our closing pss from the list of live pss 
+printf("%s LWS_CALLBACK_CLOSED\n", __FUNCTION__);
         // Kill the corresponding daemon client socket
         ///@todo could/should the socket closing part be in the raw callback?
         //conn_close(pss->conn_handle);
         
-        // Kill the websocket
+        // remove our closing pss from the list of live pss 
 		lws_ll_fwd_remove(struct per_session_data, pss_list, pss, vhd->pss_list);
-        
+  
+        // Kill the websocket
     } break;
 
 	case LWS_CALLBACK_SERVER_WRITEABLE: 
+printf("%s LWS_CALLBACK_SERVER_WRITEABLE\n", __FUNCTION__);
         /// This is the routine that actually writes to the websocket.
         /// This loop inspects the msg queue of the daemon socket (ds) that is
         /// associated with this websocket.  It will consume messages from the
@@ -266,10 +258,13 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
     /// Put the message received from the the websocket onto its queue.
     /// This message will be written to corresponding daemon socket (ds).
 	case LWS_CALLBACK_RECEIVE:
+printf("%s LWS_CALLBACK_RECEIVE\n", __FUNCTION__);
         conn_putmsg_forlocal(pss->conn_handle, in, len);
+        lws_callback_on_writable(pss->lwsi);
 		break;
 
 	default:
+printf("%s REASON=%i\n", __FUNCTION__, reason);
 		break;
 	}
 
@@ -297,13 +292,13 @@ mq_msg_t* frontend_createmsg(void* in, size_t len) {
 
 
 ///@note this may be deprecated in the all-lws model
-void frontend_pendmsg(void* ws_handle) {
-    struct lws* wsi = ws_handle;
-    
-    if (wsi != NULL) {
-        lws_callback_on_writable(wsi);
-    }
-}
+//void frontend_pendmsg(void* ws_handle) {
+//    struct lws* wsi = ws_handle;
+//    
+//    if (wsi != NULL) {
+//        lws_callback_on_writable(wsi);
+//    }
+//}
 
 
 

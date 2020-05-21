@@ -48,11 +48,10 @@
 /// one of these is created for each client connecting to us
 /// Basic idea: each session/client maps to a client socket for a corresponding daemon.
 struct per_session_data {
-    struct per_session_data* pss_list;
-    struct lws*             wsi;
-    void*                   conn_handle;        // connection handle (from backend data)
-    
-    //int                     last;               // the last message number we sent 
+    struct per_session_data*    pss_list;
+    //struct lws*                 wsi;
+    struct lws*                 lwsi;
+    void*                       conn_handle;        // connection handle (from backend data)
 };
 
 
@@ -64,9 +63,6 @@ struct per_vhost_data {
     struct lws_vhost*           vhost;
     const struct lws_protocols* protocol;
     struct per_session_data*    pss_list;   // linked-list of live pss
-    
-    //msg_t                       amsg;       // the one pending message...
-    //int                         current;    // the current message number we are caching
 };
 
 
