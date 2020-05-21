@@ -37,7 +37,7 @@ mq_msg_t* msg_new(size_t len) {
     msg = malloc(sizeof(mq_msg_t));
     if (msg != NULL) {
         msg->size   = len;
-        msg->data   = malloc(sizeof(len) + 0);  ///@todo maybe add LWS overhead ???
+        msg->data   = malloc(len + 0);  // zero data block overhead
         if (msg->data == NULL) {
             free(msg);
             msg = NULL;
@@ -89,3 +89,49 @@ void mq_putmsg(mq_t* mq, mq_msg_t* msg) {
 }
 
 
+
+#ifdef MQTEST
+
+#include <time.h>
+#include <stdlib.h>
+#include <string.h>
+
+int main(void) {
+    int rnumber;
+    int trials = 1000;
+    uint8_t testdata[128];
+    int i;
+    mq_t q;
+    mq_msg_t* msg;
+    
+    srand((unsigned int)time(NULL));
+    
+printf("%s %i\n", __FUNCTION__, __LINE__);
+    mq_init(&q);
+printf("%s %i\n", __FUNCTION__, __LINE__);
+    
+    while (--trials > 0) {
+        rnumber = (rand() % 100) + 1;
+printf("%s %i\n", __FUNCTION__, __LINE__);
+        for (i=rnumber; i>0; i--) {
+printf("%s %i\n", __FUNCTION__, __LINE__);
+            msg = msg_new(128);
+printf("%s %i\n", __FUNCTION__, __LINE__);
+            memcpy(msg->data, testdata, 128);
+            
+            mq_putmsg(&q, msg);
+        }
+printf("%s %i\n", __FUNCTION__, __LINE__);
+        for (i=rnumber; i>0; i--) {
+            msg = msg_new(128);
+            mq_getmsg(&q);
+printf("%s %i\n", __FUNCTION__, __LINE__);
+            msg_free(msg);
+printf("%s %i\n", __FUNCTION__, __LINE__);
+        }
+    }
+    
+    return 0;
+}
+
+#endif

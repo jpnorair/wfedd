@@ -26,6 +26,7 @@
 
 #include "frontend.h"
 #include "backend.h"
+#include "debug.h"
 
 #include <libwebsockets.h>
 #include <string.h>
@@ -59,41 +60,17 @@ int frontend_cli_callback(  struct lws *wsi,
     void* conn      = lws_get_opaque_user_data(wsi);
     int rc = 0;
   
-    switch (reason) {
-        //RAW mode connection RX
-        case LWS_CALLBACK_RAW_RX: 
-            break;
-        
-        //RAW mode connection is closing
-        case LWS_CALLBACK_RAW_CLOSE:
-printf("%s LWS_CALLBACK_RAW_CLOSE\n", __FUNCTION__);
-            break;
-        
-        //RAW mode connection may be written
-        case LWS_CALLBACK_RAW_WRITEABLE:
-printf("%s LWS_CALLBACK_RAW_WRITEABLE\n", __FUNCTION__);
-            break;
-        
-        //RAW mode connection was adopted (equivalent to 'wsi created')
-        case LWS_CALLBACK_RAW_ADOPT:
-printf("%s LWS_CALLBACK_RAW_ADOPT\n", __FUNCTION__);
-            break;
-        
-        //outgoing client RAW mode connection was connected
-        case LWS_CALLBACK_RAW_CONNECTED:
-printf("%s LWS_CALLBACK_RAW_CONNECTED\n", __FUNCTION__);
-            break;
-        
+    switch (reason) {        
         //RAW mode file was adopted (equivalent to 'wsi created')
         case LWS_CALLBACK_RAW_ADOPT_FILE:
-printf("%s LWS_CALLBACK_RAW_ADOPT_FILE\n", __FUNCTION__);
+            DEBUG_PRINTF("%s LWS_CALLBACK_RAW_ADOPT_FILE\n", __FUNCTION__);
             break;
     
         //This is the indication the RAW mode file has something to read. 
         //This doesn't actually do the read of the file and len is always 0... 
         //your code should do the read having been informed there is something to read now.
         case LWS_CALLBACK_RAW_RX_FILE: {
-printf("%s LWS_CALLBACK_RAW_RX_FILE\n", __FUNCTION__);
+            DEBUG_PRINTF("%s LWS_CALLBACK_RAW_RX_FILE\n", __FUNCTION__);
             int size;
             void* data;
             size = conn_readraw_local(&data, backend, conn);
@@ -105,7 +82,7 @@ printf("%s LWS_CALLBACK_RAW_RX_FILE\n", __FUNCTION__);
     
         //RAW mode file is writeable
         case LWS_CALLBACK_RAW_WRITEABLE_FILE:
-printf("%s LWS_CALLBACK_RAW_WRITEABLE_FILE\n", __FUNCTION__);
+            DEBUG_PRINTF("%s LWS_CALLBACK_RAW_WRITEABLE_FILE\n", __FUNCTION__);
             while (conn_hasmsg_forlocal(conn)) {
                 mq_msg_t* msg;
                 // Get the next message for this websocket.  Exit if no message.
@@ -121,13 +98,13 @@ printf("%s LWS_CALLBACK_RAW_WRITEABLE_FILE\n", __FUNCTION__);
         
         // RAW mode wsi that adopted a file is closing
         case LWS_CALLBACK_RAW_CLOSE_FILE:
-printf("%s LWS_CALLBACK_RAW_CLOSE_FILE\n", __FUNCTION__);
+            DEBUG_PRINTF("%s LWS_CALLBACK_RAW_CLOSE_FILE\n", __FUNCTION__);
             conn_close(conn);   
             conn_del(backend, conn);
             break;
         
         default: 
-printf("%s REASON=%i\n", __FUNCTION__, reason);
+            DEBUG_PRINTF("%s REASON=%i\n", __FUNCTION__, reason);
             break;
     }
     
@@ -209,7 +186,7 @@ int frontend_ws_callback(   struct lws *wsi,
     } break;
 
 	case LWS_CALLBACK_CLOSED: {
-printf("%s LWS_CALLBACK_CLOSED\n", __FUNCTION__);
+        DEBUG_PRINTF("%s LWS_CALLBACK_CLOSED\n", __FUNCTION__);
         // Kill the corresponding daemon client socket
         ///@todo could/should the socket closing part be in the raw callback?
         //conn_close(pss->conn_handle);
@@ -221,7 +198,7 @@ printf("%s LWS_CALLBACK_CLOSED\n", __FUNCTION__);
     } break;
 
 	case LWS_CALLBACK_SERVER_WRITEABLE: 
-printf("%s LWS_CALLBACK_SERVER_WRITEABLE\n", __FUNCTION__);
+        DEBUG_PRINTF("%s LWS_CALLBACK_SERVER_WRITEABLE\n", __FUNCTION__);
         /// This is the routine that actually writes to the websocket.
         /// This loop inspects the msg queue of the daemon socket (ds) that is
         /// associated with this websocket.  It will consume messages from the
@@ -244,8 +221,9 @@ printf("%s LWS_CALLBACK_SERVER_WRITEABLE\n", __FUNCTION__);
             }
             
             // Finally, write the message onto the websocket.
-            ///@note We allowed for LWS_PRE in the payload via 
-            m = lws_write(wsi, msg->data + LWS_PRE, msg->size, LWS_WRITE_TEXT);
+            ///@note We allowed for LWS_PRE in the payload via creation of the data
+            ///@todo have a specifier to select BINARY mode or TEXT
+            m = lws_write(wsi, msg->data+LWS_PRE, msg->size, LWS_WRITE_TEXT);     //LWS_WRITE_BINARY
             if (m < msg->size) {
                 lwsl_err("ERROR %d writing to ws\n", m);
                 rc = -1;
@@ -258,13 +236,13 @@ printf("%s LWS_CALLBACK_SERVER_WRITEABLE\n", __FUNCTION__);
     /// Put the message received from the the websocket onto its queue.
     /// This message will be written to corresponding daemon socket (ds).
 	case LWS_CALLBACK_RECEIVE:
-printf("%s LWS_CALLBACK_RECEIVE\n", __FUNCTION__);
+        DEBUG_PRINTF("%s LWS_CALLBACK_RECEIVE\n", __FUNCTION__);
         conn_putmsg_forlocal(pss->conn_handle, in, len);
         lws_callback_on_writable(pss->lwsi);
 		break;
 
 	default:
-printf("%s REASON=%i\n", __FUNCTION__, reason);
+        DEBUG_PRINTF("%s REASON=%i\n", __FUNCTION__, reason);
 		break;
 	}
 

@@ -154,7 +154,6 @@ int socklist_addmap(socklist_t* socklist, const char* mapstr) {
     ///@todo 3. Validate that the daemon socket exists and is of the right type.
     rc = sub_testsocket(dspath, 0);
     if (rc != 0) {
-//printf("%s : sub_testsocket() failed\n", __FUNCTION__);
         rc -= 5;
         goto socklist_addmap_TERM;
     }
@@ -176,8 +175,6 @@ int socklist_addmap(socklist_t* socklist, const char* mapstr) {
     }
     
     ///@todo the 1024,0 elements should come from somewhere.
-//printf("%s : .l_socket = %s\n", __FUNCTION__, dspath);
-//printf("%s : .websocket = %s\n", __FUNCTION__, wspath);
     socklist->map[i].pagesize   = 1024;
     socklist->map[i].l_type     = 0;
     socklist->map[i].l_socket   = dspath;
@@ -197,29 +194,33 @@ int socklist_newclient(sockmap_t** newclient, socklist_t* socklist, const char* 
     sockmap_t* clisock = NULL;
     int test;
     int newfd = -1;
-printf("%s : ws_name = %s\n", __FUNCTION__, ws_name);    
+   
     // Find the socket that matches the websocket mapping
+    DEBUG_PRINTF("%s : ws_name = %s\n", __FUNCTION__, ws_name); 
     clisock = socklist_search(socklist, ws_name);
     if (clisock == NULL) {
         goto socklist_newclient_EXIT;
     }
-printf("%s : socket found = %s\n", __FUNCTION__, clisock->l_socket);     
+    
     // Test the socket to make sure it is still active.  If it fails, we want
     // to delete the dead socket from the socklist.
+    DEBUG_PRINTF("%s : socket found = %s\n", __FUNCTION__, clisock->l_socket); 
     test = sub_testsocket(clisock->l_socket, clisock->l_type);
     if (test != 0) {
         ///@todo delete the dead socket and flag an error.
         clisock = NULL;
         goto socklist_newclient_EXIT;
     }
-printf("%s : socket passed test\n", __FUNCTION__);      
+      
     // Create a client socket of the resolved type.
     ///@todo Right now we only support UNIX sockets.
+    DEBUG_PRINTF("%s : socket passed test\n", __FUNCTION__);
     newfd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (newfd < 0) {
         goto socklist_newclient_EXIT;
     }
-printf("%s : socket opened, fd=%i\n", __FUNCTION__, newfd);   
+    
+    DEBUG_PRINTF("%s : socket opened, fd=%i\n", __FUNCTION__, newfd);   
     socklist_newclient_EXIT:
     if (newclient != NULL) {
         *newclient = clisock;

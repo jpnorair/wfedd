@@ -248,7 +248,6 @@ int main(int argc, char* argv[]) {
                             socklist
                         );
     }
-printf("%s %i\n", __FUNCTION__, __LINE__);
 
     /// Free allocated data
     socklist_deinit(socklist);
@@ -267,9 +266,6 @@ int wfedd(  const char* rsrcpath,
             bool use_tls,
             socklist_t* socklist 
         ) {
-        
-    //void* backend_handle;
-    //void* frontend_handle;
     
     char* certpath  = NULL;
     char* keypath   = NULL;
@@ -337,7 +333,6 @@ int wfedd(  const char* rsrcpath,
     // Each websocket protocol
     ///@todo some of these parameters may be changed
     for (i=0, j=2; i<socklist->size; i++, j++) {
-printf("new protocol = %s\n", socklist->map[i].websocket);
         protocols[j].name                   = socklist->map[i].websocket;
         protocols[j].callback               = frontend_ws_callback;
         protocols[j].per_session_data_size  = sizeof(struct per_session_data);
@@ -349,13 +344,6 @@ printf("new protocol = %s\n", socklist->map[i].websocket);
     
     // Terminator
     bzero(&protocols[j], sizeof(struct lws_protocols));
-//    protocols[j].name                   = NULL;
-//    protocols[j].callback               = NULL;
-//    protocols[j].per_session_data_size  = 0;
-//    protocols[j].rx_buffer_size         = 0;
-//    protocols[j].id                     = 0;
-//    protocols[j].user                   = NULL;
-//    protocols[j].tx_packet_size         = 0;
     
     
     ///2. Create the http mount.  This is based largely on the defined template
@@ -387,7 +375,7 @@ printf("new protocol = %s\n", socklist->map[i].websocket);
         printf(" * %s\n", certpath);
         printf(" * %s\n", keypath);
     }
-printf("%s %i\n", __FUNCTION__, __LINE__);
+
     ///3. Run the polling subsystem (backend).
     ///   This will also invoke the frontend parts, which is the libwebsockets element.
     // Logs configuration (to stdout)
@@ -409,7 +397,7 @@ printf("%s %i\n", __FUNCTION__, __LINE__);
                 keypath,
                 protocols,
                 &mount      );
-printf("%s %i\n", __FUNCTION__, __LINE__);
+
     wfedd_FINISH:
     switch (exitcode) {
        default: 
