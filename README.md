@@ -52,16 +52,16 @@ There are some external dependencies for wfedd.  All of these are relatively com
 
 ### HBuilder Dependencies
 
-wfedd is part of the HBuilder Middleware group, so the easiest way to build it is via the `hbgw_middleware` repository.  
+wfedd is part of the [HB Distribution](https://github.com/jpnorair/hbdist), so the easiest way to build it is via this distribution.  
 
 1. Install external dependencies.
-2. Clone/Download hbgw_middleware repository, and `cd` into it.
+2. Clone/Download hbdist repository, and `cd` into it.
 3. Do the normal: `make all; sudo make install` 
 4. Everything will be installed into a `/opt/` directory tree.  Make sure your `$PATH` has `/opt/bin` in it.
 
-### Building without hbgw_middleware
+### Building without HB Distribution
 
-If you want to build wfedd outside of the hbgw_middleware repository framework, you'll need to clone/download the following HBuilder repositories.  You should have all these repo directories stored flat inside a root directory.
+If you want to build wfedd outside of the [HB Distribution](https://github.com/jpnorair/hbdist), you'll need to clone/download the following repositories.  You should have all these repo directories stored flat inside a root directory.
 
 * _hbsys
 * argtable
