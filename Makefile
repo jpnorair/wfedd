@@ -33,6 +33,7 @@ PKGDIR      := ../_hbpkg/$(THISMACHINE)
 SYSDIR      := ../_hbsys/$(THISMACHINE)
 EXT_DEF     ?= 
 EXT_INC     ?= 
+EXT_LIBINC  ?= 
 EXT_LIBFLAGS ?= 
 EXT_LIBS    ?= 
 VERSION     ?= 0.1.a
@@ -70,6 +71,8 @@ ifeq ($(THISSYSTEM),Darwin)
 	OSCFLAGS := -Wno-nullability-completeness -Wno-expansion-to-defined
 	OSLIBINC := -L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib
 	OSINC := -I/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include
+	EXT_INC := -I/opt/homebrew/include $(EXT_INC)
+	EXT_LIBINC := -L/opt/homebrew/lib $(EXT_LIBINC)
 	LIBBSD :=
 else ifeq ($(THISSYSTEM),Linux)
 	OSCFLAGS := 
@@ -106,7 +109,7 @@ CFLAGS_DEBUG?= -std=gnu99 -Og -g -Wall $(OSCFLAGS) -pthread
 CFLAGS      ?= -std=gnu99 -O3 $(OSCFLAGS) -pthread
 INC         := $(EXT_INC) $(PATH_INCLWS) $(PATH_INCSSL) -I. -I./include -I./$(SYSDIR)/include -I/usr/local/include $(OSINC)
 INCDEP      := -I.
-LIBINC      := $(EXT_LIB) $(PATH_LIBLWS) $(PATH_LIBSSL) -L./$(SYSDIR)/lib -L/usr/local/lib $(OSLIBINC)
+LIBINC      := $(EXT_LIBINC) $(PATH_LIBLWS) $(PATH_LIBSSL) -L./$(SYSDIR)/lib -L/usr/local/lib $(OSLIBINC)
 LIB         := $(LIBSSL) $(LIBEVUV) -lglib-2.0 -lz -lc -lwebsockets -largtable
 
 # Export to local and subordinate makefiles
